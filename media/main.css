@@ -1,0 +1,46 @@
+body {
+	width: 100%;
+	padding: 0px 20px;
+	box-sizing: border-box;
+}
+
+body.vscode-dark * {
+	color: white;
+}
+
+body *{
+	font-family: "Consolas", serif;
+	height:auto;
+	outline: none !important;
+	border: none !important;
+	display: block;
+	width:100%;
+	box-sizing:border-box;
+}
+body #debug-text {
+	background-color: transparent;
+	min-height: 200px;
+	padding: 5px;
+	margin-top: 10px;
+}
+body input {
+	background-color: rgba(255, 255, 255, 0.05);
+	margin-top: 15px;
+	padding: 5px;
+}
+body #button-menu {
+	margin-top:30px;
+}
+body #button-menu > * {
+	margin-right: 10px;
+}
+body button {
+    display: inline-block;
+    background-color: rgba(255, 255, 255, 0.11);
+    width: auto;
+    padding: 9px 12px;
+    font-family: "Arial", sans-serif;
+    font-weight: bold;
+    cursor: pointer;
+
+}
