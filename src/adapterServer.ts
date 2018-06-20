@@ -3,11 +3,12 @@ import { PrologDebugSession } from './mockDebug';
 import { StoppedEvent } from 'vscode-debugadapter/lib/debugSession';
 
 // Added for Adapter Server
-const net = require('net');
 const debugLogger = require("electron-log");
 var fs = require('fs');
-const PORT = 47001;
-const IP = '127.0.0.1';
+
+const {spawn} = require('child_process');
+const {onExit} = require('@rauschma/stringio');
+
 const S = 14;
 
 
@@ -35,55 +36,9 @@ export class AdapterServer extends EventEmitter {
 	startServer() {
 		var self = this;
 		self.tunnelLog = "";
-        self.server = net.createServer(function (socket) {
-            debugLogger.info("Client connected to server");
-            socket.setEncoding("utf8");
-            self.socket = socket;
-			let clientName = `${socket.remoteAddress}:${socket.remotePort}`;
-			self.sendRaw("REQUEST " + self.requestNum++ + " DO Actions=[show(silent),command(ask)], ide_do(trap_errors_on).")
 
 
 
-            socket.on('data', (data) => {
-				console.log(data);
-				self.tunnelLog += data + "\n";
-				let dataByLine = data.split(/\r?\n/);
-				dataByLine.forEach(element => {
-					if (element != "" && element != " ") {
-						self.rawInstructions.push(element.substring(S, element.length));
-					}
-
-				});
-				if (self.parseInstructions()) {
-					self.emit("newInstructions");
-				}
-
-              });
-
-              // Triggered when this client disconnects
-              socket.on('end', () => {
-				console.log(`${clientName} disconnected.`);
-				self.exportOutput();
-
-			  });
-
-			  socket.on('connection', () => {
-				console.log("RUNTIME ADAPTER CONNECTED SUCESSFULLY");
-				self.sendRaw("REQUEST " + self.requestNum++ + " DO Actions=[show(silent),command(ask)], ide_do(trap_errors_on).")
-
-
-              });
-
-            socket.on("error", function (error) {
-                debugLogger.error('RepconServer-> startServer Error' + error);
-                //self.emit('agentData', 'Connection ERROR: The socket is now closed. You need to restart!');
-				socket.close;
-				self.exportOutput();
-
-				console.log(self.instructionQueue);
-            });
-        });
-        self.server.listen(PORT, IP);
         debugLogger.info("Adapter server started.");
 
 	}
