@@ -31,7 +31,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 
     context.subscriptions.push(vscode.debug.onDidReceiveDebugSessionCustomEvent((customEvent) => {
-        console.log("received somethign");
+        //console.log("received something");
         let type = customEvent.event;
         let msg = "";
         if (type == "runtimeOutput") {
@@ -219,7 +219,7 @@ class PrologDebugPanel {
                     //vscode.window.showInformationMessage(channel.then)
                     break;
                 case 'importFile':
-                    var fileDialog = vscode.window.showOpenDialog({
+                    vscode.window.showOpenDialog({
                         canSelectFiles: true,
                         canSelectFolders: false,
                         canSelectMany: false,

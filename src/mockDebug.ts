@@ -343,6 +343,8 @@ export class PrologDebugSession extends LoggingDebugSession {
 		this.adapterServer.on("newInstructions", () => {
 			this.executeInstructions();
 		})
+
+		console.log("started the runtime");
 	}
 
 	public executeInstructions() {

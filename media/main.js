@@ -47,7 +47,7 @@
                 lineBreakFlag = false;
             }
         }
-        debugConsole.textContent += formatted;
+        debugConsole.textContent += text;
 
     }
 
