@@ -44,3 +44,7 @@ body button {
     cursor: pointer;
 
 }
+body button.light {
+	background-color: transparent;
+	color: #5d97df;
+}

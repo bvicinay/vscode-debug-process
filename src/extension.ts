@@ -28,8 +28,6 @@ export function activate(context: vscode.ExtensionContext) {
 		});
     }));
 
-
-
     context.subscriptions.push(vscode.debug.onDidReceiveDebugSessionCustomEvent((customEvent) => {
         //console.log("received something");
         let type = customEvent.event;
@@ -327,7 +325,9 @@ class PrologDebugPanel {
                 <input id="debug-input" type="text" placeholder="Enter command..">
                 <input id="raw-input" type="text" placeholder="Enter RAW command..">
                 <div id="button-menu">
-                    <button id="import-btn">Import File</button><button onclick="exportLog()">Export log</button>
+                    <button id="import-btn">Import File</button>
+                    <button id="export-btn">Export log</button>
+                    <button class="light" id="clear-btn">Clear</button>
                 </div>
 
 

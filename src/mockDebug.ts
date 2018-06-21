@@ -345,6 +345,7 @@ export class PrologDebugSession extends LoggingDebugSession {
 		})
 
 		console.log("started the runtime");
+
 	}
 
 	public executeInstructions() {

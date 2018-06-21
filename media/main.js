@@ -29,6 +29,10 @@
         importFile();
     })
 
+    document.getElementById("clear-btn").addEventListener('click', function() {
+        setConsoleText("");
+    })
+
 
 
     function writeToConsole(text) {
@@ -86,6 +90,9 @@
         let raw = debugConsole.textContent;
         vscode.postMessage( {command: "exportLog", text: raw});
       }
+
+      // on startup
+      setConsoleText("");
 
 
 
