@@ -21,15 +21,18 @@ export class AdapterServer extends EventEmitter {
 	public instructionQueue;
 	public inputStream;
 
+	protected session;
+
 	//private requestNum = 1;
 
-	constructor() {
+	constructor(session: PrologDebugSession) {
 		super();
 		this.tunnelLog = "";
 		this.rawInstructions = [];
 		this.instructionQueue = [];
 
 		this.inputStream = new inputStream.Writable();
+		this.session = session;
 
 
 	}
@@ -66,7 +69,7 @@ export class AdapterServer extends EventEmitter {
 		});
 
 		this.runtime.stderr.on('data', (data) => {
-			let text = `${data}`;
+			let text = `|${data}|`;
 			console.log(text);
 			let dataByLine = text.split(/\r?\n/);
 			dataByLine.forEach(element => {
@@ -109,6 +112,12 @@ export class AdapterServer extends EventEmitter {
 		while (this.rawInstructions.length > 0) {
 			let curr = this.rawInstructions.shift();
 			let onHold = [curr];
+
+			if (curr.trim() == "Ancestors:") {
+				CallStackInstruction.STATE = StackParseState.Fix;
+				//onHold = [];
+			}
+
 			// Merge all instructions together
 			while (curr.substring(curr.length-2, curr.length) != "? ") {
 				curr = this.rawInstructions.shift();
@@ -140,12 +149,31 @@ export class AdapterServer extends EventEmitter {
 			}
 
 			// Exclude not relevant instructions
-			for (var i = onHold.length-1; i >= 0; i--) {
-				let line = onHold[i].charAt(0);
-				if (line != " " && !isNaN(line)) {
-					break;
+			var i = 0;
+			console.log(onHold);
+			if (CallStackInstruction.STATE == StackParseState.Parse) {
+				for (i = onHold.length-1; i >= 0; i--) {
+					if (onHold[i] == " ? ") {
+						continue;
+					}
+
+					let line = onHold[i].trim().charAt(0);
+					if ("?+*#".includes(line) || onHold[i].charAt(0) == " ") {
+						i++;
+						break;
+					}
+					if (line != " " && !isNaN(line)) {
+						break;
+					}
+
 				}
+			} else if (CallStackInstruction.STATE == StackParseState.Fix) {
+				debugLogger.warn("ENTERING CALL STACK FIX STATE");
+				CallStackInstruction.fixCallStack(onHold.splice(1, onHold.length), this.session);
+				CallStackInstruction.STATE = StackParseState.Parse;
+				return true;
 			}
+
 			let extra = onHold.slice(0, i-1);
 			let relevant = onHold.slice(i-1, onHold.length);
 			let event1: DebugInstruction = new InfoInstruction(extra);
@@ -193,14 +221,14 @@ class InfoInstruction extends DebugInstruction {
 	}
 
 	execute(session: PrologDebugSession) {
-		if (this.raw.substring(this.raw.length-7, this.raw.length) == "(trace)") {
+/* 		if (this.raw.substring(this.raw.length-7, this.raw.length) == "(trace)") {
 			CallStackInstruction.fixCallStack(session);
-		}
+		} */
 
 		if (CallStackInstruction.STATE == StackParseState.Fix) {
 			//return -1;
 		}
-		console.log(this);
+		//console.log(this);
 		session.sendToClient("\n" + this.raw + "\n");
 		return 1;
 	}
@@ -270,18 +298,16 @@ class CallStackInstruction extends DebugInstruction {
 
 		this.fName = blocks[3].trim();
 
-		if (endFixState) {
-			CallStackInstruction.STATE = StackParseState.Parse;
-
-			debugLogger.error("Ended CallStack Fix/Update");
-		}
 
 	}
 
 	execute(session: PrologDebugSession) {
-		session.sendToClient(this.raw + "\n");
-		console.log("instruction level: " + this.level);
-		console.log(this);
+		if (CallStackInstruction.STATE == StackParseState.Parse) {
+			session.sendToClient(this.raw + "\n");
+		}
+
+		//console.log("instruction level: " + this.level);
+		//console.log(this);
 		//console.log(session.callStack);
 
 		// Call stack instruction
@@ -305,10 +331,21 @@ class CallStackInstruction extends DebugInstruction {
 		return 1;
 	}
 
-	static fixCallStack(session: PrologDebugSession) {
-		this.STATE = StackParseState.Fix;
-		session.adapterServer.sendRaw("g");
+ 	static fixCallStack(stackLines: string[], session: PrologDebugSession) {
 		session.callStack = new Array();
+		stackLines.forEach( el =>  {
+			// split markers area
+			for (var i = 0; i < el.length; i++) {
+				if (!" ?+*#".includes(el.charAt(i))) {
+					break;
+				}
+			}
+			let lines = [el.substring(0, i), el.substring(i, el.length)];
+			let event = new CallStackInstruction(lines);
+			event.execute(session);
+		})
+
+
 	}
 }
 

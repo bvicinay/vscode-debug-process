@@ -338,7 +338,7 @@ export class PrologDebugSession extends LoggingDebugSession {
 
 	public setupServer() {
 		// Start adapter server to send/receive data
-		this.adapterServer = new AdapterServer();
+		this.adapterServer = new AdapterServer(this);
 		this.adapterServer.startServer();
 		this.adapterServer.on("newInstructions", () => {
 			this.executeInstructions();
