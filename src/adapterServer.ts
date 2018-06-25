@@ -113,10 +113,25 @@ export class AdapterServer extends EventEmitter {
 			let curr = this.rawInstructions.shift();
 			let onHold = [curr];
 
-			if (curr.trim() == "Ancestors:") {
+			if (curr.trim() == "Ancestors:" && CallStackInstruction.STATE != StackParseState.Fix) {
 				CallStackInstruction.STATE = StackParseState.Fix;
+				let msgEvt = new InfoInstruction([curr]);
+				msgEvt.execute(this.session); // no need to add to queue
 				//onHold = [];
+			} else if (curr == "| :- ") {
+				CallStackInstruction.STATE = StackParseState.Ignore;
 			}
+
+			if (CallStackInstruction.STATE == StackParseState.Ignore) {
+				let msgEvt = new InfoInstruction([curr]);
+				msgEvt.execute(this.session); // no need to add to queue
+				console.log("stil here");
+				if (curr.substring(curr.length-2, curr.length) != "? ") {
+					CallStackInstruction.STATE = StackParseState.Parse;
+				}
+				return true;
+			}
+
 
 			// Merge all instructions together
 			while (curr.substring(curr.length-2, curr.length) != "? ") {
@@ -146,11 +161,12 @@ export class AdapterServer extends EventEmitter {
 				}
 
 				onHold.push(curr); // after if important
+
 			}
 
 			// Exclude not relevant instructions
 			var i = 0;
-			console.log(onHold);
+			//console.log(onHold);
 			if (CallStackInstruction.STATE == StackParseState.Parse) {
 				let line = onHold[i];
 				while (line.charAt(0) == "%") {
@@ -158,16 +174,17 @@ export class AdapterServer extends EventEmitter {
 					line = onHold[i];
 				}
 			}
-			if (false && CallStackInstruction.STATE == StackParseState.Fix) {
+			if (CallStackInstruction.STATE == StackParseState.Fix) {
 				debugLogger.warn("ENTERING CALL STACK FIX STATE");
 				CallStackInstruction.fixCallStack(onHold.splice(1, onHold.length), this.session);
 				CallStackInstruction.STATE = StackParseState.Parse;
+				this.session.showOnConsole = true;
 				return true;
 			}
 
 			let extra = onHold.slice(0, i);
 			let relevant = onHold.slice(i, onHold.length);
-			console.log(relevant);
+			//console.log(relevant);
 			let event1: DebugInstruction = new InfoInstruction(extra);
 			let event2: DebugInstruction = new CallStackInstruction(relevant);
 
@@ -193,9 +210,14 @@ export class AdapterServer extends EventEmitter {
 abstract class DebugInstruction {
 
 	raw;
+	static count = 0;
 
-	constructor(rawData: string) {
-		this.raw = rawData.trim();
+	constructor(rawData: string, trim?: boolean) {
+		if (trim) {
+			rawData = rawData.trim()
+		}
+		this.raw = rawData;
+		DebugInstruction.count++;
 		//console.log(rawData);
 	}
 
@@ -222,11 +244,19 @@ class InfoInstruction extends DebugInstruction {
 		}
 		//console.log(this);
 		session.sendToClient("\n" + this.raw + "\n");
+
+		let temp = this.raw.trim();
+		if (temp.substring(temp.length-7, temp.length) == "(trace)" && DebugInstruction.count > 2) {
+			session.adapterServer.sendRaw("g");
+			session.hideAfterNext = true;
+
+		}
+
 		return 1;
 	}
 }
 
-class CallStackInstruction extends DebugInstruction {
+export class CallStackInstruction extends DebugInstruction {
 
 	static STATE: StackParseState;
 
@@ -240,7 +270,7 @@ class CallStackInstruction extends DebugInstruction {
 
 	constructor(lines: string[]) {
 		let raw = lines.join("");
-		super(raw);
+		super(raw, true);
 		this.frameMarker = false;
 
 		//|4      2 Call: |
@@ -263,10 +293,8 @@ class CallStackInstruction extends DebugInstruction {
 		let blocks = noMarkers.split(/\s+/g);
 
 		// use @ to determine if CallStack-Fix is done
-		var endFixState = false;
 		if (CallStackInstruction.STATE == StackParseState.Fix) {
 			if (blocks[0].charAt(0) == "@") {
-				endFixState = true;
 				this.frameMarker = true;
 				blocks[0] = blocks[0].substring(1, blocks[0].length); // remove @
 			}
@@ -280,6 +308,14 @@ class CallStackInstruction extends DebugInstruction {
 		}
 		this.level = _level;
 
+		try {
+			blocks[2].charAt(0);
+		} catch (err) {
+			console.log(this);
+			console.log(lines);
+			console.log(err);
+
+		}
 
 		// TODO: add support for EXCEPTION and REDO action
 		switch (blocks[2].charAt(0)) {
@@ -306,6 +342,12 @@ class CallStackInstruction extends DebugInstruction {
 
 	execute(session: PrologDebugSession) {
 		session.sendToClient(this.raw + "\n");
+
+		if (session.hideAfterNext) {
+			session.showOnConsole = false;
+			session.hideAfterNext = false;
+		}
+
 
 		//console.log("instruction level: " + this.level);
 		//console.log(this);
@@ -334,7 +376,25 @@ class CallStackInstruction extends DebugInstruction {
 
  	static fixCallStack(stackLines: string[], session: PrologDebugSession) {
 		session.callStack = new Array();
-		stackLines.forEach( el =>  {
+		let merged = new Array<string>();
+		// merge ? if needed
+		if (stackLines[stackLines.length-1] == " ? ") {
+			stackLines[stackLines.length-2] += stackLines[stackLines.length-1];
+			stackLines.pop();
+		}
+		// merge markers by call
+		while (stackLines.length != 0) {
+			let el = stackLines.shift();
+			if (!el) {
+				console.log("Something went wrong!");
+				return;
+			}
+			while (el.length <= 23) {
+				el += stackLines.shift();
+			}
+			merged.push(el);
+		}
+		merged.forEach( el =>  {
 			// split markers area
 			for (var i = 0; i < el.length; i++) {
 				if (!" ?+*#".includes(el.charAt(i))) {
@@ -358,8 +418,9 @@ enum StackAction {
 
 }
 
-enum StackParseState {
+export enum StackParseState {
 	Parse,
-	Fix
+	Fix,
+	Ignore
 }
 

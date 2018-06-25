@@ -11,7 +11,7 @@ import {
 import { DebugProtocol} from 'vscode-debugprotocol';
 import { basename } from 'path';
 import { MockRuntime, MockBreakpoint } from './mockRuntime';
-import { AdapterServer } from './adapterServer';
+import { AdapterServer, CallStackInstruction } from './adapterServer';
 import * as vscode from 'vscode';
 const { Subject } = require('await-notify');
 
@@ -43,6 +43,8 @@ export class PrologDebugSession extends LoggingDebugSession {
 	public state = new Map();
 	public callStack = new Array();
 	public importedFiles = new Array<vscode.Uri>();
+	public hideAfterNext = false;
+	public showOnConsole = true;
 
 	private _variableHandles = new Handles<string>();
 
@@ -104,8 +106,10 @@ export class PrologDebugSession extends LoggingDebugSession {
 				this.importedFiles.push(f);
 				let s = new Source(f.path, f.path, this.importedFiles.length, f.fsPath, f.scheme);
 				let e = new LoadedSourceEvent('new', s);
-				console.log(e);
 				this.sendEvent(e);
+				this.adapterServer.sendRaw("@");
+				//console.log(`set_prolog_flag( redefine_warnings, off), ['${f.path.substring(1, f.path.length)}'].`);
+				this.adapterServer.sendRaw(`set_prolog_flag( redefine_warnings, off), ['${f.path.substring(1, f.path.length)}'].`);
 
 
 		}
@@ -358,6 +362,9 @@ export class PrologDebugSession extends LoggingDebugSession {
 	}
 
 	public sendToClient(message: string) {
+		if (!this.showOnConsole) {
+			return;
+		}
 		this.emit('user_error', message);
 		//this.sendEvent(new OutputEvent(message, 'console', 'example'));
 		//this.sendEvent(new BorjaCustomEvent("whaterver exampe", this));

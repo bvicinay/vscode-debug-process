@@ -9,6 +9,7 @@ import * as path from 'path';
 import { WorkspaceFolder, DebugConfiguration, ProviderResult, CancellationToken } from 'vscode';
 import { PrologDebugSession } from './mockDebug';
 import * as Net from 'net';
+import { CallStackInstruction, StackParseState } from './adapterServer';
 
 /*
  * Set the following compile time flag to true if the
@@ -224,9 +225,8 @@ class PrologDebugPanel {
                         openLabel: 'Import File'
                     }).then( file => {
                         if (file) {
-                            console.log(file);
-                            console.log(file[0]);
                             if (debugSession) {
+                                CallStackInstruction.STATE = StackParseState.Ignore;
                                 debugSession.customRequest("importFile", file[0]);
                             }
                             vscode.window.showTextDocument(file[0], {
@@ -234,6 +234,7 @@ class PrologDebugPanel {
                                 preserveFocus: false
                             }).then( editor => {
                                 // editor is opened
+
                             })
                         }
                     });
