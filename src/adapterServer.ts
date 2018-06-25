@@ -69,8 +69,8 @@ export class AdapterServer extends EventEmitter {
 		});
 
 		this.runtime.stderr.on('data', (data) => {
-			let text = `|${data}|`;
-			console.log(text);
+			let text = `${data}`;
+			console.log("|" + text + "|");
 			let dataByLine = text.split(/\r?\n/);
 			dataByLine.forEach(element => {
 				if (element != "" && element != " ") {
@@ -152,30 +152,22 @@ export class AdapterServer extends EventEmitter {
 			var i = 0;
 			console.log(onHold);
 			if (CallStackInstruction.STATE == StackParseState.Parse) {
-				for (i = onHold.length-1; i >= 0; i--) {
-					if (onHold[i] == " ? ") {
-						continue;
-					}
-
-					let line = onHold[i].trim().charAt(0);
-					if ("?+*#".includes(line) || onHold[i].charAt(0) == " ") {
-						i++;
-						break;
-					}
-					if (line != " " && !isNaN(line)) {
-						break;
-					}
-
+				let line = onHold[i];
+				while (line.charAt(0) == "%") {
+					i = i + 2;
+					line = onHold[i];
 				}
-			} else if (CallStackInstruction.STATE == StackParseState.Fix) {
+			}
+			if (false && CallStackInstruction.STATE == StackParseState.Fix) {
 				debugLogger.warn("ENTERING CALL STACK FIX STATE");
 				CallStackInstruction.fixCallStack(onHold.splice(1, onHold.length), this.session);
 				CallStackInstruction.STATE = StackParseState.Parse;
 				return true;
 			}
 
-			let extra = onHold.slice(0, i-1);
-			let relevant = onHold.slice(i-1, onHold.length);
+			let extra = onHold.slice(0, i);
+			let relevant = onHold.slice(i, onHold.length);
+			console.log(relevant);
 			let event1: DebugInstruction = new InfoInstruction(extra);
 			let event2: DebugInstruction = new CallStackInstruction(relevant);
 
@@ -257,7 +249,17 @@ class CallStackInstruction extends DebugInstruction {
 		//N S    23     F6 Call: T foo(hello,there,_123) ?
 
 		let markers = lines[0]; // TODO: account for markers N S
-		let noMarkers = lines.slice(1, lines.length).join("");
+		let temp = markers.trim().charAt(0);
+		let noMarkers = "";
+
+		if ("*?#+".includes(temp) || !isNaN(temp as any)) {
+			//markers are merged
+			markers = lines[0].substring(0, 8);
+			noMarkers += lines[0].substring(8, lines[0].length);
+		}
+		noMarkers += lines.slice(1, lines.length).join("");
+
+
 		let blocks = noMarkers.split(/\s+/g);
 
 		// use @ to determine if CallStack-Fix is done
@@ -265,6 +267,7 @@ class CallStackInstruction extends DebugInstruction {
 		if (CallStackInstruction.STATE == StackParseState.Fix) {
 			if (blocks[0].charAt(0) == "@") {
 				endFixState = true;
+				this.frameMarker = true;
 				blocks[0] = blocks[0].substring(1, blocks[0].length); // remove @
 			}
 		}
@@ -302,9 +305,7 @@ class CallStackInstruction extends DebugInstruction {
 	}
 
 	execute(session: PrologDebugSession) {
-		if (CallStackInstruction.STATE == StackParseState.Parse) {
-			session.sendToClient(this.raw + "\n");
-		}
+		session.sendToClient(this.raw + "\n");
 
 		//console.log("instruction level: " + this.level);
 		//console.log(this);
