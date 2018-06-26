@@ -36,7 +36,7 @@ export function activate(context: vscode.ExtensionContext) {
         if (type == "runtimeOutput") {
             msg = customEvent.body.data.msg;
         } else if (type == "loadedSource") {
-            msg = "***Imported file " + customEvent.body.source.origin;
+            //msg = "***Imported file " + customEvent.body.source.origin;
         }
         if (PrologDebugPanel.currentPanel) {
             PrologDebugPanel.currentPanel._panel.webview.postMessage({ command: 'writeToConsole', text: msg });

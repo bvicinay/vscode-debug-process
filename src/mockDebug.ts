@@ -64,8 +64,6 @@ export class PrologDebugSession extends LoggingDebugSession {
 
 		this._runtime = new MockRuntime();
 
-
-
 		// setup event handlers
 		this._runtime.on('stopOnEntry', () => {
 			this.sendEvent(new StoppedEvent('entry', PrologDebugSession.THREAD_ID));
@@ -108,8 +106,9 @@ export class PrologDebugSession extends LoggingDebugSession {
 				let e = new LoadedSourceEvent('new', s);
 				this.sendEvent(e);
 				this.adapterServer.sendRaw("@");
-				//console.log(`set_prolog_flag( redefine_warnings, off), ['${f.path.substring(1, f.path.length)}'].`);
-				this.adapterServer.sendRaw(`set_prolog_flag( redefine_warnings, off), ['${f.path.substring(1, f.path.length)}'].`);
+
+				let cmd = `set_prolog_flag( redefine_warnings, off), ['${f.path.substring(1, f.path.length)}'].`;
+				this.adapterServer.sendRaw(cmd);
 
 
 		}
@@ -175,16 +174,15 @@ export class PrologDebugSession extends LoggingDebugSession {
 
 		const path = <string>args.source.path;
 		const clientLines = args.lines || [];
-		console.log("it got here!!!");
 
 		// clear all breakpoints for this file
-		this._runtime.clearBreakpoints(path);
+		this.adapterServer.clearBreakpoints(path);
 
 		// set and verify breakpoint locations
 		const actualBreakpoints = clientLines.map(l => {
-			let { verified, line, id } = this._runtime.setBreakPoint(path, this.convertClientLineToDebugger(l));
+			let { verified, line, id } = this.adapterServer.setBreakPoint(path, this.convertClientLineToDebugger(l));
 			const bp = <DebugProtocol.Breakpoint> new Breakpoint(verified, this.convertDebuggerLineToClient(line));
-			bp.id= id;
+			bp.id = id;
 			return bp;
 		});
 

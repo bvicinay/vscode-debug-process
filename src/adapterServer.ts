@@ -15,13 +15,15 @@ const inputStream = require('stream');
 
 export class AdapterServer extends EventEmitter {
 
-	private runtime;
+	private process;
 	private tunnelLog;
 	private rawInstructions;
 	public instructionQueue;
 	public inputStream;
 
 	protected session;
+	public breakpoints;
+	private _breakpointId;
 
 	//private requestNum = 1;
 
@@ -34,25 +36,28 @@ export class AdapterServer extends EventEmitter {
 		this.inputStream = new inputStream.Writable();
 		this.session = session;
 
+		this.breakpoints = new Map<string, BasicBreakpoint[]>();
+		this._breakpointId = 1;
+
 
 	}
 
 	startServer() {
 		var self = this;
 
-		this.runtime = spawn("C:\\repcon4\\runtime\\bin\\repcon.exe",
+		this.process = spawn("C:\\repcon4\\runtime\\bin\\repcon.exe",
 							["-f", "c:\\repcon4\\repcon.properties",
 							"-f", "c:\\repcon4\\runtime\\scripts\\erc_repcon_factory_session.rcf"],
 							{shell: true});
 
 		debugLogger.info("Runtime started.");
-		this.runtime.stdin.setEncoding('utf-8');
+		this.process.stdin.setEncoding('utf-8');
 
 /* 		this.runtime.on('exit', function (code, signal) {
 			console.log(`Runtime exited with code ${code} and signal ${signal}`);
 		}); */
 
-		this.runtime.stdout.on('data', (data) => {
+		this.process.stdout.on('data', (data) => {
 			//console.log(data);
 			/* self.tunnelLog += data + "\n";
 			let dataByLine = data.split(/\r?\n/);
@@ -68,7 +73,7 @@ export class AdapterServer extends EventEmitter {
 
 		});
 
-		this.runtime.stderr.on('data', (data) => {
+		this.process.stderr.on('data', (data) => {
 			let text = `${data}`;
 			console.log("|" + text + "|");
 			let dataByLine = text.split(/\r?\n/);
@@ -98,7 +103,7 @@ export class AdapterServer extends EventEmitter {
 	sendRaw(input) {
 
 		//console.log("Sent to runtime: " + input);
-		this.runtime.stdin.write(input + "\n");
+		this.process.stdin.write(input + "\n");
 		//this.runtime.stdin.end();
 
 
@@ -140,7 +145,7 @@ export class AdapterServer extends EventEmitter {
 
 					//// very special case, cut the merge and execute
 					let last = onHold[onHold.length-1];
-					if (last.length > 3 && last.charAt(0) == "%") {
+					if (last.length > 3 && (last.charAt(0) == "%" || last.charAt(last.length-2) == "?")) {
 						let event1 = new InfoInstruction(onHold);
 						this.instructionQueue.push(event1);
 						return true;
@@ -152,12 +157,12 @@ export class AdapterServer extends EventEmitter {
 					return false; // wait for more data;
 				}
 
-				if (curr.charAt(0) == "%") {
+				if (curr.trim().charAt(0) == "%" || curr.trim().charAt(0) == "!") {
 					// cut the merge
 					this.rawInstructions.unshift(curr);
 					let event1 = new InfoInstruction(onHold);
 					this.instructionQueue.push(event1);
-					return true;
+					return this.parseInstructions();
 				}
 
 				onHold.push(curr); // after if important
@@ -168,11 +173,23 @@ export class AdapterServer extends EventEmitter {
 			var i = 0;
 			//console.log(onHold);
 			if (CallStackInstruction.STATE == StackParseState.Parse) {
-				let line = onHold[i];
-				while (line.charAt(0) == "%") {
-					i = i + 2;
-					line = onHold[i];
+				//let line = onHold[i].trim();
+/* 				while (line.charAt(0) == "%") {
+					line = onHold[++i].trim();
+					while (line.charAt(0) != "%") {
+						line = onHold[i++].trim();
+					}
+				} */
+				let line = onHold[i].substring(0, 2).replace("?", " ");
+				while (line != "  ") {
+					try {
+						line = onHold[++i].substring(0, 2).replace("?", " ");
+					} catch (err) {
+						break;
+					}
+
 				}
+
 			}
 			if (CallStackInstruction.STATE == StackParseState.Fix) {
 				debugLogger.warn("ENTERING CALL STACK FIX STATE");
@@ -184,9 +201,10 @@ export class AdapterServer extends EventEmitter {
 
 			let extra = onHold.slice(0, i);
 			let relevant = onHold.slice(i, onHold.length);
-			//console.log(relevant);
+			console.log(extra, relevant);
 			let event1: DebugInstruction = new InfoInstruction(extra);
 			let event2: DebugInstruction = new CallStackInstruction(relevant);
+
 
 			if (extra.length > 0) {
 				this.instructionQueue.push(event1, event2);
@@ -195,6 +213,39 @@ export class AdapterServer extends EventEmitter {
 			}
 		}
 		return true;
+	}
+
+	public setBreakPoint(path: string, line: number) : BasicBreakpoint {
+
+		const bp = <BasicBreakpoint> { verified: false, line, id: this._breakpointId++ };
+		let bps = this.breakpoints.get(path);
+		if (!bps) {
+			bps = new Array<BasicBreakpoint>();
+			this.breakpoints.set(path, bps);
+		}
+
+		bp.verified = this.verifyBreakpoint(bp);
+		if (!bps.includes(bp)) {
+			// send breakpoint command
+			this.sendRaw("@");
+			let cmd = `add_breakpoint( line( '${path}', ${line} ),   BID ).`.replace(/\\/g, "/");
+			this.sendRaw(cmd);
+			console.log(cmd);
+			console.log("sent command for line " + bp.line);
+			bps.push(bp);
+		}
+
+		console.log(this.breakpoints);
+
+		return bp;
+	}
+
+	private verifyBreakpoint( bp: BasicBreakpoint ) {
+		return true; // TODO: implement breakpoint verification of some sort
+	}
+
+	public clearBreakpoints(path: string): void {
+		this.breakpoints.delete(path);
 	}
 
 
@@ -242,7 +293,7 @@ class InfoInstruction extends DebugInstruction {
 		if (CallStackInstruction.STATE == StackParseState.Fix) {
 			//return -1;
 		}
-		//console.log(this);
+		//console.log(this, session);
 		session.sendToClient("\n" + this.raw + "\n");
 
 		let temp = this.raw.trim();
@@ -270,7 +321,7 @@ export class CallStackInstruction extends DebugInstruction {
 
 	constructor(lines: string[]) {
 		let raw = lines.join("");
-		super(raw, true);
+		super(raw, false);
 		this.frameMarker = false;
 
 		//|4      2 Call: |
@@ -422,5 +473,11 @@ export enum StackParseState {
 	Parse,
 	Fix,
 	Ignore
+}
+
+interface BasicBreakpoint {
+	id: number;
+	line: number;
+	verified: boolean;
 }
 

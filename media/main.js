@@ -37,6 +37,9 @@
 
     function writeToConsole(text) {
         console.log("text is comming here::: " +text);
+        debugConsole.textContent += text;
+        return;
+
         let formatted = text;
         if (formatted.charAt(0) == "%") {
             lineBreakFlag = true;
@@ -51,7 +54,7 @@
                 lineBreakFlag = false;
             }
         }
-        debugConsole.textContent += text;
+
 
     }
 
