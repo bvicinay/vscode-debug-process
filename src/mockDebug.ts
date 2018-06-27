@@ -109,6 +109,9 @@ export class PrologDebugSession extends LoggingDebugSession {
 
 				let cmd = `set_prolog_flag( redefine_warnings, off), ['${f.path.substring(1, f.path.length)}'].`;
 				this.adapterServer.sendRaw(cmd);
+				break;
+			case 'export_output':
+				this.adapterServer.exportOutput();
 
 
 		}
@@ -176,7 +179,7 @@ export class PrologDebugSession extends LoggingDebugSession {
 		const clientLines = args.lines || [];
 
 		// clear all breakpoints for this file
-		this.adapterServer.clearBreakpoints(path);
+		//this.adapterServer.clearBreakpoints(path);
 
 		// set and verify breakpoint locations
 		const actualBreakpoints = clientLines.map(l => {
@@ -359,8 +362,10 @@ export class PrologDebugSession extends LoggingDebugSession {
 
 	}
 
-	public sendToClient(message: string) {
-		if (!this.showOnConsole) {
+	public sendToClient(message: string, run?: boolean) {
+		if (!this.showOnConsole || !run) {
+			let b = new OutputEvent(message);
+			this.sendEvent(b);
 			return;
 		}
 		this.emit('user_error', message);
@@ -369,6 +374,8 @@ export class PrologDebugSession extends LoggingDebugSession {
 		let e = new OutputEvent('runtimeOutput', 'user_error', { msg: message });
 		e.event = "runtimeOutput";
 		this.sendEvent(e);
+
+
 		//console.log(e);
 
 	}

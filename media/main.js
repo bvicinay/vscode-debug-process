@@ -33,6 +33,10 @@
         setConsoleText("");
     })
 
+    document.getElementById("export-btn").addEventListener('click', function() {
+        exportLog();
+    })
+
 
 
     function writeToConsole(text) {

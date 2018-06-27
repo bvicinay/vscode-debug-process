@@ -76,6 +76,10 @@ export class AdapterServer extends EventEmitter {
 		this.process.stderr.on('data', (data) => {
 			let text = `${data}`;
 			console.log("|" + text + "|");
+			this.session.sendToClient(text, true);
+			this.tunnelLog += text;
+
+
 			let dataByLine = text.split(/\r?\n/);
 			dataByLine.forEach(element => {
 				if (element != "" && element != " ") {
@@ -104,6 +108,7 @@ export class AdapterServer extends EventEmitter {
 
 		//console.log("Sent to runtime: " + input);
 		this.process.stdin.write(input + "\n");
+		this.session.sendToClient("\n", true);
 		//this.runtime.stdin.end();
 
 
@@ -216,16 +221,22 @@ export class AdapterServer extends EventEmitter {
 	}
 
 	public setBreakPoint(path: string, line: number) : BasicBreakpoint {
-
 		const bp = <BasicBreakpoint> { verified: false, line, id: this._breakpointId++ };
 		let bps = this.breakpoints.get(path);
+		let breakFlag = false;
 		if (!bps) {
 			bps = new Array<BasicBreakpoint>();
 			this.breakpoints.set(path, bps);
+			breakFlag = true;
 		}
 
 		bp.verified = this.verifyBreakpoint(bp);
-		if (!bps.includes(bp)) {
+
+		let usedBp = bps.some( (val, index, arr) => {
+			return val.line == bp.line;
+		});
+
+		if (!usedBp) {
 			// send breakpoint command
 			this.sendRaw("@");
 			let cmd = `add_breakpoint( line( '${path}', ${line} ),   BID ).`.replace(/\\/g, "/");
@@ -233,6 +244,10 @@ export class AdapterServer extends EventEmitter {
 			console.log(cmd);
 			console.log("sent command for line " + bp.line);
 			bps.push(bp);
+
+			if (true) {
+				this.session.sendToClient("\n", true);
+			}
 		}
 
 		console.log(this.breakpoints);
@@ -246,6 +261,7 @@ export class AdapterServer extends EventEmitter {
 
 	public clearBreakpoints(path: string): void {
 		this.breakpoints.delete(path);
+		this._breakpointId = 1;
 	}
 
 

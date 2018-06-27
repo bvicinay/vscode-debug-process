@@ -20,6 +20,8 @@ const EMBED_DEBUG_ADAPTER = false;
 var htmlLoaded = false;
 var switchEditorCount = 0;
 
+var storedOutput = "";
+
 export function activate(context: vscode.ExtensionContext) {
 
 	context.subscriptions.push(vscode.commands.registerCommand('extension.mock-debug.getProgramName', config => {
@@ -38,8 +40,12 @@ export function activate(context: vscode.ExtensionContext) {
         } else if (type == "loadedSource") {
             //msg = "***Imported file " + customEvent.body.source.origin;
         }
+        storedOutput += msg;
         if (PrologDebugPanel.currentPanel) {
-            PrologDebugPanel.currentPanel._panel.webview.postMessage({ command: 'writeToConsole', text: msg });
+            if (PrologDebugPanel.currentPanel._panel.visible) {
+                PrologDebugPanel.currentPanel._panel.webview.postMessage({ command: 'writeToConsole', text: storedOutput });
+                storedOutput = "";
+            }
         }
     }));
 
@@ -213,6 +219,10 @@ class PrologDebugPanel {
                     }
                     break;
                 case 'exportLog':
+                    if (debugSession) {
+                        debugSession.customRequest("export_output", {msg: message.raw});
+                    //console.log("sent from extension: " + message.text);
+                    }
                     //let text = message.text;
                     //let channel = vscode.window.showSaveDialog({ saveLabel: "Export Log"});
                     //vscode.window.showInformationMessage(channel.then)
@@ -272,6 +282,8 @@ class PrologDebugPanel {
     }
 
     private _update() {
+        this._panel.webview.postMessage({ command: 'writeToConsole', text: storedOutput });
+        storedOutput = "";
         // Vary the webview's content based on where it is located in the editor.
         switch (this._panel.viewColumn) {
             case vscode.ViewColumn.Two:
@@ -293,6 +305,7 @@ class PrologDebugPanel {
         this._panel.title = panelTitle;
         if (!htmlLoaded) {
             this._panel.webview.html = this._getHtmlForWebview(panelTitle);
+
             htmlLoaded = true;
         }
 
