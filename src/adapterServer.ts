@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
 import { PrologDebugSession } from './mockDebug';
-import { StoppedEvent } from 'vscode-debugadapter/lib/debugSession';
+import { StoppedEvent, OutputEvent } from 'vscode-debugadapter/lib/debugSession';
 
 // Added for Adapter Server
 const debugLogger = require("electron-log");
@@ -185,10 +185,10 @@ export class AdapterServer extends EventEmitter {
 						line = onHold[i++].trim();
 					}
 				} */
-				let line = onHold[i].substring(0, 2).replace("?", " ");
+				let line = onHold[i].substring(0, 2).replace(/([?#])+/g, " ");
 				while (line != "  ") {
 					try {
-						line = onHold[++i].substring(0, 2).replace("?", " ");
+						line = onHold[++i].substring(0, 2).replace(/([?#])+/g, " ");
 					} catch (err) {
 						break;
 					}
@@ -261,6 +261,8 @@ export class AdapterServer extends EventEmitter {
 
 	public clearBreakpoints(path: string): void {
 		this.breakpoints.delete(path);
+		this.sendRaw("@");
+		this.sendRaw("remove_breakpoints(all).");
 		this._breakpointId = 1;
 	}
 
@@ -271,6 +273,12 @@ export class AdapterServer extends EventEmitter {
 		fs.writeFile("src/tunnel_output.txt", this.tunnelLog, function(err) {});
 		console.log("output saved!");
 
+	}
+
+	sendEvent(event: string, ... args: any[]) {
+		setImmediate(_ => {
+			this.emit(event, ...args);
+		});
 	}
 }
 
@@ -296,9 +304,12 @@ abstract class DebugInstruction {
 
 class InfoInstruction extends DebugInstruction {
 
+	static previous: string = "";
+
 	constructor(lines: string[]) {
 		let raw = lines.join("");
 		super(raw);
+		InfoInstruction.previous = raw;
 	}
 
 	execute(session: PrologDebugSession) {
@@ -321,6 +332,28 @@ class InfoInstruction extends DebugInstruction {
 
 		return 1;
 	}
+
+	static gatherBreakpointInfo(): any {
+		try {
+			let temp = InfoInstruction.previous;
+			temp = temp.substring(27, temp.length);
+			let marker = temp.indexOf(" ");
+
+			let line = parseInt(temp.substring(0, marker));
+			if (line == NaN) {
+				return false;
+			}
+			let file = temp.substring(marker + 4, temp.length);
+			return { line: line, file: file };
+
+		} catch (err) {
+			console.log(err);
+			return false;
+		}
+
+
+
+	}
 }
 
 export class CallStackInstruction extends DebugInstruction {
@@ -333,6 +366,7 @@ export class CallStackInstruction extends DebugInstruction {
 	fName: string; // restore(...)
 
 	frameMarker: boolean;
+	breakpointEvt: boolean;
 
 
 	constructor(lines: string[]) {
@@ -344,7 +378,7 @@ export class CallStackInstruction extends DebugInstruction {
 		//|call(prolog:do_ex221153)),1),clpfd,[]))|
 
 		//N S    23     F6 Call: T foo(hello,there,_123) ?
-
+		this.breakpointEvt = false;
 		let markers = lines[0]; // TODO: account for markers N S
 		let temp = markers.trim().charAt(0);
 		let noMarkers = "";
@@ -355,6 +389,11 @@ export class CallStackInstruction extends DebugInstruction {
 			noMarkers += lines[0].substring(8, lines[0].length);
 		}
 		noMarkers += lines.slice(1, lines.length).join("");
+
+		// detect whether breakpoint event
+		if (markers.includes("#")) {
+			this.breakpointEvt = true;
+		}
 
 
 		let blocks = noMarkers.split(/\s+/g);
@@ -438,6 +477,18 @@ export class CallStackInstruction extends DebugInstruction {
 				break;
 		}
 		session.sendEvent(new StoppedEvent('reply', PrologDebugSession.THREAD_ID));
+
+		if (this.breakpointEvt) {
+			let response = InfoInstruction.gatherBreakpointInfo();
+			if (response != false) {
+				session.sendEvent(new StoppedEvent('breakpoint', PrologDebugSession.THREAD_ID));
+				session.sendEvent(new OutputEvent("THE BREAKPOINT WORKS"));
+				session.adapterServer.sendEvent('stopOnException');
+			};
+		}
+
+
+
 		return 1;
 	}
 

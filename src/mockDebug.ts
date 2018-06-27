@@ -59,8 +59,8 @@ export class PrologDebugSession extends LoggingDebugSession {
 		super("mock-debug.txt");
 
 		// this debugger uses zero-based lines and columns
-		this.setDebuggerLinesStartAt1(false);
-		this.setDebuggerColumnsStartAt1(false);
+		this.setDebuggerLinesStartAt1(true);
+		this.setDebuggerColumnsStartAt1(true);
 
 		this._runtime = new MockRuntime();
 
@@ -179,7 +179,10 @@ export class PrologDebugSession extends LoggingDebugSession {
 		const clientLines = args.lines || [];
 
 		// clear all breakpoints for this file
-		//this.adapterServer.clearBreakpoints(path);
+		if (!args.breakpoints || args.breakpoints.length == 0) {
+			this.adapterServer.clearBreakpoints(path);
+		}
+
 
 		// set and verify breakpoint locations
 		const actualBreakpoints = clientLines.map(l => {
