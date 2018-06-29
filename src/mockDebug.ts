@@ -11,7 +11,7 @@ import {
 import { DebugProtocol} from 'vscode-debugprotocol';
 import { basename } from 'path';
 import { MockRuntime, MockBreakpoint } from './mockRuntime';
-import { AdapterServer, CallStackInstruction } from './adapterServer';
+import { AdapterServer, BasicBreakpoint } from './adapterServer';
 import * as vscode from 'vscode';
 const { Subject } = require('await-notify');
 
@@ -42,7 +42,7 @@ export class PrologDebugSession extends LoggingDebugSession {
 	public adapterServer: AdapterServer;
 	public state = new Map();
 	public callStack = new Array();
-	public importedFiles = new Array<vscode.Uri>();
+	public importedFiles = new Map();
 	public hideAfterNext = false;
 	public showOnConsole = true;
 
@@ -101,18 +101,20 @@ export class PrologDebugSession extends LoggingDebugSession {
 				break;
 			case 'importFile':
 				let f = args as vscode.Uri;
-				this.importedFiles.push(f);
-				let s = new Source(f.path, f.path, this.importedFiles.length, f.fsPath, f.scheme);
+				let s = new Source(f.path, f.path, this.importedFiles.entries.length, f.fsPath, f.scheme);
+				this.importedFiles.set(f.path, s);
 				let e = new LoadedSourceEvent('new', s);
 				this.sendEvent(e);
 				this.adapterServer.sendRaw("@");
-
 				let cmd = `set_prolog_flag( redefine_warnings, off), ['${f.path.substring(1, f.path.length)}'].`;
 				this.adapterServer.sendRaw(cmd);
+				this.adapterServer.verifyBreakpoints();
 				break;
 			case 'export_output':
 				this.adapterServer.exportOutput();
-
+				break;
+			case 'remove_breakpoint':
+				// handled already somewhere else
 
 		}
 		return new Promise(() => {});
@@ -154,6 +156,7 @@ export class PrologDebugSession extends LoggingDebugSession {
 
 		// notify the launchRequest that configuration has finished
 		this._configurationDone.notif
+
 	}
 
 	public async launchRequest(response: DebugProtocol.LaunchResponse, args: LaunchRequestArguments) {
@@ -171,6 +174,8 @@ export class PrologDebugSession extends LoggingDebugSession {
 		this.setupServer();
 
 		this.sendResponse(response);
+
+		this.adapterServer.verifyBreakpoints();
 	}
 
 	protected setBreakPointsRequest(response: DebugProtocol.SetBreakpointsResponse, args: DebugProtocol.SetBreakpointsArguments): void {
@@ -181,16 +186,33 @@ export class PrologDebugSession extends LoggingDebugSession {
 		// clear all breakpoints for this file
 		if (!args.breakpoints || args.breakpoints.length == 0) {
 			this.adapterServer.clearBreakpoints(path);
+			return;
 		}
-
-
-		// set and verify breakpoint locations
+				// set and verify breakpoint locations
 		const actualBreakpoints = clientLines.map(l => {
 			let { verified, line, id } = this.adapterServer.setBreakPoint(path, this.convertClientLineToDebugger(l));
-			const bp = <DebugProtocol.Breakpoint> new Breakpoint(verified, this.convertDebuggerLineToClient(line));
+			const bp = <DebugProtocol.Breakpoint> new Breakpoint(verified, this.convertDebuggerLineToClient(line), undefined, this.importedFiles.get(path));
 			bp.id = id;
 			return bp;
 		});
+
+		let onRuntime: Map<Number, BasicBreakpoint> = this.adapterServer.allBps;
+
+		if (actualBreakpoints.length < onRuntime.size) {
+			// remove pertinent
+			onRuntime.forEach( (value, key, map) => {
+				if (!actualBreakpoints.some( (val, index, arr) => {
+					return val.id == key;
+				})) {
+					this.adapterServer.removeBreakpoint(key)
+				}
+				});
+
+		}
+		console.log("*----");
+		console.log(actualBreakpoints);
+		console.log(this.adapterServer.breakpoints);
+		console.log("-----*");
 
 		// send back the actual breakpoint positions
 		response.body = {

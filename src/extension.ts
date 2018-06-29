@@ -77,6 +77,14 @@ export function activate(context: vscode.ExtensionContext) {
 
     })
 
+    vscode.debug.onDidChangeBreakpoints( (args) => {
+        if (args.removed.length > 0 && vscode.debug.activeDebugSession) {
+            //vscode.debug.activeDebugSession.customRequest("remove_breakpoint", {bps: args.removed});
+        }
+
+
+    })
+
 }
 
 export function deactivate() {

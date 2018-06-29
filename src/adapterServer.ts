@@ -23,6 +23,7 @@ export class AdapterServer extends EventEmitter {
 
 	protected session;
 	public breakpoints;
+	public allBps;
 	private _breakpointId;
 
 	//private requestNum = 1;
@@ -37,6 +38,7 @@ export class AdapterServer extends EventEmitter {
 		this.session = session;
 
 		this.breakpoints = new Map<string, BasicBreakpoint[]>();
+		this.allBps = new Map();
 		this._breakpointId = 1;
 
 
@@ -221,13 +223,12 @@ export class AdapterServer extends EventEmitter {
 	}
 
 	public setBreakPoint(path: string, line: number) : BasicBreakpoint {
-		const bp = <BasicBreakpoint> { verified: false, line, id: this._breakpointId++ };
+		const bp = <BasicBreakpoint> { verified: false, line, id: this._breakpointId, path: path };
 		let bps = this.breakpoints.get(path);
-		let breakFlag = false;
 		if (!bps) {
 			bps = new Array<BasicBreakpoint>();
 			this.breakpoints.set(path, bps);
-			breakFlag = true;
+
 		}
 
 		bp.verified = this.verifyBreakpoint(bp);
@@ -244,10 +245,14 @@ export class AdapterServer extends EventEmitter {
 			console.log(cmd);
 			console.log("sent command for line " + bp.line);
 			bps.push(bp);
+			this.allBps.set(bp.id, bp);
+			this._breakpointId++;
 
 			if (true) {
 				this.session.sendToClient("\n", true);
 			}
+		} else {
+
 		}
 
 		console.log(this.breakpoints);
@@ -255,8 +260,38 @@ export class AdapterServer extends EventEmitter {
 		return bp;
 	}
 
-	private verifyBreakpoint( bp: BasicBreakpoint ) {
-		return true; // TODO: implement breakpoint verification of some sort
+	private verifyBreakpoint( bp: BasicBreakpoint) {
+		let path = bp.path;
+		if (bp.line < 0) {
+			return false;
+		}
+		let url = "/" + path.replace(/\\/g, "/");
+		let val = this.session.importedFiles.has(url);
+	    return val;
+
+	}
+	public verifyBreakpoints() {
+		this.allBps.array.forEach( (value, key, map) => {
+			value.forEach( (val, index, arr) => {
+				this.allBps[key][index].verified = this.verifyBreakpoint(this.allBps[key][index]);
+			});
+		});
+
+	}
+
+	public removeBreakpoint ( id:Number ) {
+		let bp = this.allBps.get(id);
+		this.allBps.delete(id);
+		this.sendRaw("@");
+		let cmd = `remove_breakpoints([${id}]).`;
+		this.sendRaw(cmd);
+		this.breakpoints.array.forEach((value, key, map) => {
+			if (value.splice(this.allBps.indexOf(bp), 1).length > 0) {
+				return;
+			};
+		});
+
+
 	}
 
 	public clearBreakpoints(path: string): void {
@@ -542,9 +577,10 @@ export enum StackParseState {
 	Ignore
 }
 
-interface BasicBreakpoint {
+export interface BasicBreakpoint {
 	id: number;
 	line: number;
 	verified: boolean;
+	path: string;
 }
 
