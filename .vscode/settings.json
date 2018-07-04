@@ -3,5 +3,7 @@
 	"javascript.validate.enable": false,
 	"typescript.tsdk": "node_modules/typescript/lib",
 	"files.trimTrailingWhitespace": true,
-	"editor.insertSpaces": false
+	"editor.insertSpaces": false,
+	"highlightLine.borderColor": "#FF0000",
+	"highlightLine.borderWidth": "10px"
 }

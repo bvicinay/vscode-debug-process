@@ -171,7 +171,7 @@ export class MockRuntime extends EventEmitter {
 				}
 			}
 			// no more lines: run to end
-			this.sendEvent('end');
+			//this.sendEvent('end');
 		}
 	}
 

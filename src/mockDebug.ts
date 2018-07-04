@@ -4,7 +4,7 @@
 import {
 	Logger, logger,
 	LoggingDebugSession,
-	InitializedEvent, TerminatedEvent, StoppedEvent, BreakpointEvent, OutputEvent,
+	InitializedEvent, TerminatedEvent, StoppedEvent, ContinuedEvent, BreakpointEvent, OutputEvent,
 	Thread, StackFrame, Scope, Source, Handles, Breakpoint, LoadedSourceEvent
 } from 'vscode-debugadapter';
 
@@ -45,6 +45,8 @@ export class PrologDebugSession extends LoggingDebugSession {
 	public importedFiles = new Map();
 	public hideAfterNext = false;
 	public showOnConsole = true;
+	public variables: Map<Number, Map<string, any>>;
+	public varRetrieve: boolean = false;
 
 	private _variableHandles = new Handles<string>();
 
@@ -61,6 +63,8 @@ export class PrologDebugSession extends LoggingDebugSession {
 		// this debugger uses zero-based lines and columns
 		this.setDebuggerLinesStartAt1(true);
 		this.setDebuggerColumnsStartAt1(true);
+
+
 
 		this._runtime = new MockRuntime();
 
@@ -103,12 +107,18 @@ export class PrologDebugSession extends LoggingDebugSession {
 				let f = args as vscode.Uri;
 				let s = new Source(f.path, f.path, this.importedFiles.entries.length, f.fsPath, f.scheme);
 				this.importedFiles.set(f.path, s);
+				this.adapterServer.setFile(s);
 				let e = new LoadedSourceEvent('new', s);
 				this.sendEvent(e);
 				this.adapterServer.sendRaw("@");
 				let cmd = `set_prolog_flag( redefine_warnings, off), ['${f.path.substring(1, f.path.length)}'].`;
 				this.adapterServer.sendRaw(cmd);
+				this.sendEvent(new StoppedEvent('step', PrologDebugSession.THREAD_ID));
 				this.adapterServer.verifyBreakpoints();
+
+
+				this.adapterServer.sendRaw("@");
+				this.adapterServer.sendRaw("prolog:set_auto_binding(on).");
 				break;
 			case 'export_output':
 				this.adapterServer.exportOutput();
@@ -171,16 +181,14 @@ export class PrologDebugSession extends LoggingDebugSession {
 		// Start runtime here
 		this._runtime.start(args.program, !!args.stopOnEntry);
 
-		this.setupServer();
+		this.setupServer(args.program);
 
 		this.sendResponse(response);
-
-		this.adapterServer.verifyBreakpoints();
 	}
 
 	protected setBreakPointsRequest(response: DebugProtocol.SetBreakpointsResponse, args: DebugProtocol.SetBreakpointsArguments): void {
 
-		const path = <string>args.source.path;
+		const path =<string>args.source.path;
 		const clientLines = args.lines || [];
 
 		// clear all breakpoints for this file
@@ -257,8 +265,7 @@ export class PrologDebugSession extends LoggingDebugSession {
 
 		const frameReference = args.frameId;
 		const scopes = new Array<Scope>();
-		scopes.push(new Scope("Local", this._variableHandles.create("local_" + frameReference), false));
-		scopes.push(new Scope("Global", this._variableHandles.create("global_" + frameReference), true));
+		scopes.push(new Scope("Local", this._variableHandles.create("" + frameReference), false));
 
 		response.body = {
 			scopes: scopes
@@ -268,33 +275,37 @@ export class PrologDebugSession extends LoggingDebugSession {
 
 	protected variablesRequest(response: DebugProtocol.VariablesResponse, args: DebugProtocol.VariablesArguments): void {
 
+		console.log("vars request");
+		console.log(args);
+
+
+		if (!this.variables) {
+			this.adapterServer.sendRaw("@");
+			this.adapterServer.sendRaw("prolog:set_auto_binding(on).");
+		}
 		const variables = new Array<DebugProtocol.Variable>();
 		const id = this._variableHandles.get(args.variablesReference);
 		if (id !== null) {
-			variables.push({
-				name: id + "_i",
-				type: "integer",
-				value: "123",
-				variablesReference: 0
-			});
-			variables.push({
-				name: id + "_f",
-				type: "float",
-				value: "3.14",
-				variablesReference: 0
-			});
-			variables.push({
-				name: id + "_s",
-				type: "string",
-				value: "hello world",
-				variablesReference: 0
-			});
-			variables.push({
-				name: id + "_o",
-				type: "object",
-				value: "Object",
-				variablesReference: this._variableHandles.create("object_")
-			});
+			let level = parseInt(id);
+			let vars = this.variables.get(level);
+			if (vars) {
+				vars.forEach( (val, key, map) => {
+					variables.push({
+						name: key,
+						type: "string",
+						value: val,
+						variablesReference: 0
+					});
+				});
+			} else {
+				variables.push({
+					name: "?",
+					type: "string",
+					value: "not tracked in this call",
+					variablesReference: 0
+				});
+			}
+
 		}
 
 		response.body = {
@@ -305,7 +316,7 @@ export class PrologDebugSession extends LoggingDebugSession {
 
 	protected continueRequest(response: DebugProtocol.ContinueResponse, args: DebugProtocol.ContinueArguments): void {
 		this._runtime.continue(); //TODO: remove call on runtime
-		this.adapterServer.sendUserInput("l");
+		this.adapterServer.continue();
 		this.sendResponse(response);
 	}
 	protected pauseRequest(response: DebugProtocol.PauseResponse, args: DebugProtocol.PauseArguments): void {
@@ -318,7 +329,7 @@ export class PrologDebugSession extends LoggingDebugSession {
 		this.sendResponse(response);
 	}
 	protected stepInRequest(response: DebugProtocol.StepInResponse, args: DebugProtocol.StepInArguments): void {
-		this.adapterServer.sendUserInput("");
+		this.adapterServer.step();
 		this.sendResponse(response);
 	}
     protected stepOutRequest(response: DebugProtocol.StepOutResponse, args: DebugProtocol.StepOutArguments): void {
@@ -366,15 +377,38 @@ export class PrologDebugSession extends LoggingDebugSession {
 		this.sendResponse(response);
 	}
 
-	public setupServer() {
+	public setupServer(program?: string) {
 		// Start adapter server to send/receive data
 		this.adapterServer = new AdapterServer(this);
-		this.adapterServer.startServer();
+		this.adapterServer.startServer(true, program);
 		this.adapterServer.on("newInstructions", () => {
 			this.executeInstructions();
 		})
+		this.adapterServer.on('stopOnBreakpoint', (args) => {
+			this.sendEvent(new ContinuedEvent(PrologDebugSession.THREAD_ID, true));
+			this.sendEvent(new StoppedEvent('breakpoint', PrologDebugSession.THREAD_ID, "Paused on a breakpoint"));
+			let e = new OutputEvent('infoMessage', 'breakpoint', args);
+			e.event = "infoMessage";
+			this.sendEvent(e);
+		});
+
+		this.adapterServer.on('continue', () => {
+			this.sendEvent(new ContinuedEvent(PrologDebugSession.THREAD_ID));
+		});
+
+		this.adapterServer.on('stopOnEntry', () => {
+			this.sendEvent(new StoppedEvent('entry', PrologDebugSession.THREAD_ID));
+		});
+		this.adapterServer.on('stopOnStep', () => {
+			this.sendEvent(new StoppedEvent('step', PrologDebugSession.THREAD_ID));
+		});
 
 		console.log("started the runtime");
+
+		this.variables = new Map();
+
+
+
 
 	}
 
@@ -394,8 +428,6 @@ export class PrologDebugSession extends LoggingDebugSession {
 			return;
 		}
 		this.emit('user_error', message);
-		//this.sendEvent(new OutputEvent(message, 'console', 'example'));
-		//this.sendEvent(new BorjaCustomEvent("whaterver exampe", this));
 		let e = new OutputEvent('runtimeOutput', 'user_error', { msg: message });
 		e.event = "runtimeOutput";
 		this.sendEvent(e);
@@ -420,19 +452,3 @@ export class PrologDebugSession extends LoggingDebugSession {
 
 
 }
-/* class BorjaCustomEvent extends Event  implements vscode.DebugSessionCustomEvent {
-	session: vscode.DebugSession;
-	event: string;
-	body: {
-		text: string
-	}
-	public constructor(text: string, s: PrologDebugSession) {
-		super('console');
-		this.body.text = text;
-		this.event = 'console';
-		this.session = vscode.debug.activeDebugSession;
-	}
-} */
-
-
-

@@ -1,6 +1,7 @@
 import { EventEmitter } from 'events';
 import { PrologDebugSession } from './mockDebug';
-import { StoppedEvent, OutputEvent } from 'vscode-debugadapter/lib/debugSession';
+import { StoppedEvent, Source } from 'vscode-debugadapter/lib/debugSession';
+import { readFileSync } from 'fs';
 
 // Added for Adapter Server
 const debugLogger = require("electron-log");
@@ -21,6 +22,15 @@ export class AdapterServer extends EventEmitter {
 	public instructionQueue;
 	public inputStream;
 
+	protected source_file: Source;
+	public _sourceFile: string;
+
+	private get sourceFile() {
+		return this._sourceFile;
+	}
+
+	protected _sourceLines;
+	public _currentLine: Number;
 	protected session;
 	public breakpoints;
 	public allBps;
@@ -41,11 +51,19 @@ export class AdapterServer extends EventEmitter {
 		this.allBps = new Map();
 		this._breakpointId = 1;
 
+		this._currentLine = 0;
+
+
 
 	}
 
-	startServer() {
+	startServer(stopOnEntry: boolean, file?: string) {
+		// TODO: implemement stopOnEntry decision
 		var self = this;
+
+		if (file) {
+			this._sourceFile = file;
+		}
 
 		this.process = spawn("C:\\repcon4\\runtime\\bin\\repcon.exe",
 							["-f", "c:\\repcon4\\repcon.properties",
@@ -100,17 +118,52 @@ export class AdapterServer extends EventEmitter {
 		debugLogger.info("Runtime started.");
 		CallStackInstruction.STATE = StackParseState.Parse;
 
+		this._currentLine = 0;
+		this.sendEvent('stopOnEntry');
+		this.verifyBreakpoints();
+
+		if (stopOnEntry) {
+			// we step once
+			this.sendEvent("stopOnEntry");
+			console.log("stopped!!!!");
+		} else {
+			// we just start to run until we hit a breakpoint or an exception
+			this.continue();
+			console.log("not stopped!!!!");
+		}
+
+
 
 	}
+
+	/**
+	 * Continue execution to the end/beginning.
+	 */
+	public continue(reverse = false) {
+		// wait till next exception is found
+		this.sendRaw("l");
+		this.sendEvent("continue");
+	}
+
+	/**
+	 * Step to the next/previous non empty line.
+	 */
+	public step(event = 'stopOnStep') {
+		// cannot implement, no way of reading one line
+
+		this.sendRaw("");
+		this.sendEvent(event);
+	}
+
 	sendUserInput(input) {
 		this.sendRaw(input);
 	}
 
-	sendRaw(input) {
+	sendRaw(input, lineBreak=true) {
 
 		//console.log("Sent to runtime: " + input);
 		this.process.stdin.write(input + "\n");
-		this.session.sendToClient("\n", true);
+		this.session.sendToClient("\n", lineBreak);
 		//this.runtime.stdin.end();
 
 
@@ -118,6 +171,14 @@ export class AdapterServer extends EventEmitter {
 	}
 	sendRequestStack() {
 		//this.sendRaw("REQUEST " + this.requestNum++ + " stack");
+	}
+
+	askForVars() {
+		if (CallStackInstruction.STATE == StackParseState.Parse) {
+			this.sendRaw("v", false);
+			this.session.showOnConsole = false;
+		}
+
 	}
 
 	parseInstructions() {
@@ -178,6 +239,11 @@ export class AdapterServer extends EventEmitter {
 
 			// Exclude not relevant instructions
 			var i = 0;
+			if (onHold[i].substring(0, 9) == "Local var") {
+				let event = new VariableInstruction(onHold);
+				this.instructionQueue.push(event);
+				return true;
+			}
 			//console.log(onHold);
 			if (CallStackInstruction.STATE == StackParseState.Parse) {
 				//let line = onHold[i].trim();
@@ -187,6 +253,7 @@ export class AdapterServer extends EventEmitter {
 						line = onHold[i++].trim();
 					}
 				} */
+
 				let line = onHold[i].substring(0, 2).replace(/([?#])+/g, " ");
 				while (line != "  ") {
 					try {
@@ -271,7 +338,10 @@ export class AdapterServer extends EventEmitter {
 
 	}
 	public verifyBreakpoints() {
-		this.allBps.array.forEach( (value, key, map) => {
+		if (!this.allBps) {
+			return;
+		}
+		this.allBps.forEach( (value, key, map) => {
 			value.forEach( (val, index, arr) => {
 				this.allBps[key][index].verified = this.verifyBreakpoint(this.allBps[key][index]);
 			});
@@ -301,8 +371,52 @@ export class AdapterServer extends EventEmitter {
 		this._breakpointId = 1;
 	}
 
+	public setFile( file: Source ) {
+		this.source_file = file;
+		this.source_file.name = this.source_file.path.substring(1, this.source_file.path.length);
+		this._sourceFile = file.name;
+		this._sourceLines = readFileSync(this.source_file.name).toString().split('\n');
+		return true;
+	}
+
+	/**
+	 * Fire events if line has a breakpoint or the word 'exception' is found.
+	 * Returns true is execution needs to stop.
+	 */
+	public fireEventsForLine(ln: number, stepEvent?: string): boolean {
+
+		//const line = this._sourceLines[ln].trim();
+		this._currentLine = ln;
+
+		// is there a breakpoint?
+		let temp = this.source_file.path.replace(/\//g, "\\");
+		temp = temp.substring(1, temp.length);
+		const breakpoints = this.breakpoints.get(temp);
+		if (breakpoints) {
+			const bps = breakpoints.filter(bp => bp.line === ln);
+			if (bps.length > 0) {
+
+				// send 'stopped' event
+
+				this.sendEvent('stopOnBreakpoint', {line: ln, file: temp});
 
 
+
+				// the following shows the use of 'breakpoint' events to update properties of a breakpoint in the UI
+				// if breakpoint is not yet verified, verify it now and send a 'breakpoint' update event
+				if (!bps[0].verified) {
+					bps[0].verified = true;
+					this.sendEvent('breakpointValidated', bps[0]);
+				}
+				return true;
+			}
+		}
+
+
+
+		// nothing interesting found -> continue
+		return false;
+	}
 
 	exportOutput() {
 		fs.writeFile("src/tunnel_output.txt", this.tunnelLog, function(err) {});
@@ -356,12 +470,30 @@ class InfoInstruction extends DebugInstruction {
 			//return -1;
 		}
 		//console.log(this, session);
-		session.sendToClient("\n" + this.raw + "\n");
+
 
 		let temp = this.raw.trim();
+		let print = true;
+
+		if (temp.includes("No local var")) {
+			session.variables.set(session.callStack.length, new Map());
+			session.showOnConsole = true;
+
+		}
+		session.sendToClient("\n" + this.raw + "\n");
+
+
+
 		if (temp.substring(temp.length-7, temp.length) == "(trace)" && DebugInstruction.count > 2) {
 			session.adapterServer.sendRaw("g");
 			session.hideAfterNext = true;
+			session.sendEvent(new StoppedEvent('stopOnStep', PrologDebugSession.THREAD_ID));
+
+
+		}
+
+		if (temp.includes("No local var")) {
+			session.variables.set(session.callStack.length, new Map());
 
 		}
 
@@ -499,31 +631,43 @@ export class CallStackInstruction extends DebugInstruction {
 			case StackAction.Call:
 				if (this.level == session.callStack.length + 1) {
 					session.callStack.push([this.fName, this.level]);
+					// Ask for variables stack
+					session.adapterServer.askForVars();
+				} else if (this.level < session.callStack.length + 1) {
+					//// Added to solve breakpoint problem
+					while (this.level < session.callStack.length + 1) {
+						session.callStack.pop();
+						session.variables.delete(session.callStack.length);
+					}
+					session.callStack.push([this.fName, this.level]);
+					//session.adapterServer.askForVars();
+					//////////////////////////////////////////////
 				}
 				break;
 			case StackAction.Fail:
 			case StackAction.Exit:
 				if (this.level <= session.callStack.length) {
 					let curr = session.callStack.pop();
+					session.variables.delete(session.callStack.length);
 					while (curr[1] != this.level) {
 						curr = session.callStack.pop()
+						session.variables.delete(session.callStack.length);
 					}
 				}
 				break;
 		}
-		session.sendEvent(new StoppedEvent('reply', PrologDebugSession.THREAD_ID));
+		//session.sendEvent(new StoppedEvent('reply', PrologDebugSession.THREAD_ID));
 
 		if (this.breakpointEvt) {
 			let response = InfoInstruction.gatherBreakpointInfo();
 			if (response != false) {
-				session.sendEvent(new StoppedEvent('breakpoint', PrologDebugSession.THREAD_ID));
-				session.sendEvent(new OutputEvent("THE BREAKPOINT WORKS"));
-				session.adapterServer.sendEvent('stopOnException');
+				//session.sendEvent(new StoppedEvent('breakpoint', PrologDebugSession.THREAD_ID));
+				session.adapterServer.fireEventsForLine(response.line, undefined);
 			};
 		}
 
 
-
+		session.adapterServer.sendEvent('stopOnStep');
 		return 1;
 	}
 
@@ -560,6 +704,35 @@ export class CallStackInstruction extends DebugInstruction {
 		})
 
 
+	}
+}
+
+export class VariableInstruction extends DebugInstruction {
+
+	vars: Map<string, any>;
+
+	constructor(lines: string[]) {
+		let raw = lines.join("");
+		super(raw);
+		let relevant = raw.substring(47, raw.length);
+		let blocks = relevant.split(",");
+		this.vars = new Map();
+		blocks[blocks.length-1] = blocks[blocks.length-1].replace("?","");
+		blocks.forEach(block => {
+			let pair = block.split("=");
+			this.vars.set(pair[0].trim(), pair[1].trim());
+		});
+	}
+
+	execute(session: PrologDebugSession ) {
+		let pairs = new Map();
+		this.vars.forEach( (value, key, map) => {
+			pairs.set(key, value);
+		});
+		session.variables.set(session.callStack.length, pairs);
+		session.adapterServer.sendEvent('stopOnStep');
+		session.showOnConsole = true;
+		return 1;
 	}
 }
 
