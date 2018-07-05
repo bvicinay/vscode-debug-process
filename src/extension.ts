@@ -41,12 +41,6 @@ export function activate(context: vscode.ExtensionContext) {
             //msg = "***Imported file " + customEvent.body.source.origin;
         } else if (type == "infoMessage") {
             vscode.window.showInformationMessage(`Exception reached ->  Line: ${customEvent.body.data.line} \n File: ${customEvent.body.data.file}`);
-            vscode.window.visibleTextEditors.forEach((editor) => {
-                const currentPosition = new vscode.Position(customEvent.body.data.line-2, 0);
-                let decorationType = getDecorationTypeFromConfig();
-                let newDecoration = { range: new vscode.Range(currentPosition, currentPosition) };
-                editor.setDecorations(decorationType, [newDecoration]);
-            })
         }
         storedOutput += msg;
         if (PrologDebugPanel.currentPanel) {
@@ -376,15 +370,3 @@ function getNonce() {
     return text;
 }
 
-
-//UTILITIES
-function getDecorationTypeFromConfig() {
-    //const config = vscode.workspace.getConfiguration("highlightLine")
-    const decorationType = vscode.window.createTextEditorDecorationType({
-        isWholeLine: true,
-        borderWidth: `0 0 10 0`,
-        borderStyle: `solid`, //TODO: file bug, this shouldn't throw a lint error.
-        borderColor: "#FF0000"
-    })
-    return decorationType;
-}

@@ -25,16 +25,16 @@ export class AdapterServer extends EventEmitter {
 	protected source_file: Source;
 	public _sourceFile: string;
 
-	private get sourceFile() {
+	public get sourceFile() {
 		return this._sourceFile;
 	}
 
 	protected _sourceLines;
-	public _currentLine: Number;
+	public _currentLine: Number = 0;
 	protected session;
 	public breakpoints;
 	public allBps;
-	private _breakpointId;
+	private _breakpointId = 1;;
 
 	//private requestNum = 1;
 
@@ -49,11 +49,6 @@ export class AdapterServer extends EventEmitter {
 
 		this.breakpoints = new Map<string, BasicBreakpoint[]>();
 		this.allBps = new Map();
-		this._breakpointId = 1;
-
-		this._currentLine = 0;
-
-
 
 	}
 
@@ -63,6 +58,7 @@ export class AdapterServer extends EventEmitter {
 
 		if (file) {
 			this._sourceFile = file;
+			this._sourceLines = readFileSync(this._sourceFile).toString().split('\n');
 		}
 
 		this.process = spawn("C:\\repcon4\\runtime\\bin\\repcon.exe",
@@ -73,23 +69,7 @@ export class AdapterServer extends EventEmitter {
 		debugLogger.info("Runtime started.");
 		this.process.stdin.setEncoding('utf-8');
 
-/* 		this.runtime.on('exit', function (code, signal) {
-			console.log(`Runtime exited with code ${code} and signal ${signal}`);
-		}); */
-
 		this.process.stdout.on('data', (data) => {
-			//console.log(data);
-			/* self.tunnelLog += data + "\n";
-			let dataByLine = data.split(/\r?\n/);
-			dataByLine.forEach(element => {
-				if (element != "" && element != " ") {
-					self.rawInstructions.push(element);
-				}
-
-			});
-			if (self.parseInstructions()) {
-				self.emit("newInstructions");
-			} */
 
 		});
 
@@ -118,8 +98,7 @@ export class AdapterServer extends EventEmitter {
 		debugLogger.info("Runtime started.");
 		CallStackInstruction.STATE = StackParseState.Parse;
 
-		this._currentLine = 0;
-
+		this.verifyBreakpoints();
 
 		if (stopOnEntry) {
 			// we step once
@@ -131,7 +110,7 @@ export class AdapterServer extends EventEmitter {
 			console.log("not stopped!!!!");
 		}
 
-		this.verifyBreakpoints();
+
 
 
 
@@ -390,7 +369,7 @@ export class AdapterServer extends EventEmitter {
 		this._currentLine = ln;
 
 		// is there a breakpoint?
-		let temp = this.source_file.path.replace(/\//g, "\\");
+		let temp = this.source_file.path;
 		temp = temp.substring(1, temp.length);
 		const breakpoints = this.breakpoints.get(temp);
 		if (breakpoints) {
@@ -486,7 +465,7 @@ class InfoInstruction extends DebugInstruction {
 
 
 		if (temp.substring(temp.length-7, temp.length) == "(trace)" && DebugInstruction.count > 2) {
-			session.adapterServer.sendRaw("g");
+			session._runtime.sendRaw("g");
 			session.hideAfterNext = true;
 			session.sendEvent(new StoppedEvent('stopOnStep', PrologDebugSession.THREAD_ID));
 
@@ -631,9 +610,9 @@ export class CallStackInstruction extends DebugInstruction {
 		switch (this.action) {
 			case StackAction.Call:
 				if (this.level == session.callStack.length + 1) {
-					session.callStack.push([this.fName, this.level]);
+					session.callStack.push([this.fName, this.level, session._runtime._currentLine]);
 					// Ask for variables stack
-					session.adapterServer.askForVars();
+					session._runtime.askForVars();
 				} else if (this.level < session.callStack.length + 1) {
 					//// Added to solve breakpoint problem
 					while (this.level < session.callStack.length + 1) {
@@ -662,13 +641,15 @@ export class CallStackInstruction extends DebugInstruction {
 		if (this.breakpointEvt) {
 			let response = InfoInstruction.gatherBreakpointInfo();
 			if (response != false) {
-				//session.sendEvent(new StoppedEvent('breakpoint', PrologDebugSession.THREAD_ID));
-				session.adapterServer.fireEventsForLine(response.line, undefined);
+				session.callStack[session.callStack.length-1][2] = response.line;
+				session._runtime.fireEventsForLine(response.line, undefined);
 			};
 		}
 
+		if (!this.breakpointEvt) {
+			session._runtime.sendEvent('stopOnStep');
+		}
 
-		session.adapterServer.sendEvent('stopOnStep');
 		return 1;
 	}
 
@@ -731,7 +712,7 @@ export class VariableInstruction extends DebugInstruction {
 			pairs.set(key, value);
 		});
 		session.variables.set(session.callStack.length, pairs);
-		session.adapterServer.sendEvent('stopOnStep');
+		session._runtime.sendEvent('stopOnStep');
 		session.showOnConsole = true;
 		return 1;
 	}
