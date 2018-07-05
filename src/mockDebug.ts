@@ -385,7 +385,6 @@ export class PrologDebugSession extends LoggingDebugSession {
 			this.executeInstructions();
 		})
 		this.adapterServer.on('stopOnBreakpoint', (args) => {
-			this.sendEvent(new ContinuedEvent(PrologDebugSession.THREAD_ID, true));
 			this.sendEvent(new StoppedEvent('breakpoint', PrologDebugSession.THREAD_ID, "Paused on a breakpoint"));
 			let e = new OutputEvent('infoMessage', 'breakpoint', args);
 			e.event = "infoMessage";

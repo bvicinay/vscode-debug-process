@@ -119,8 +119,7 @@ export class AdapterServer extends EventEmitter {
 		CallStackInstruction.STATE = StackParseState.Parse;
 
 		this._currentLine = 0;
-		this.sendEvent('stopOnEntry');
-		this.verifyBreakpoints();
+
 
 		if (stopOnEntry) {
 			// we step once
@@ -131,6 +130,8 @@ export class AdapterServer extends EventEmitter {
 			this.continue();
 			console.log("not stopped!!!!");
 		}
+
+		this.verifyBreakpoints();
 
 
 
