@@ -73,9 +73,6 @@ export class PrologDebugSession extends LoggingDebugSession {
 			case 'user_input':
 				this.sendToDebugAdapter(args.msg as string);
 				break;
-			case 'raw_input':
-				this._runtime.sendRaw(args.msg as string);
-				break;
 			case 'importFile':
 				let f = args as vscode.Uri;
 				let s = new Source(f.path, f.path, this.importedFiles.entries.length, f.fsPath, f.scheme);
@@ -88,8 +85,6 @@ export class PrologDebugSession extends LoggingDebugSession {
 				this._runtime.sendRaw(cmd);
 				this.sendEvent(new StoppedEvent('step', PrologDebugSession.THREAD_ID));
 				this._runtime.verifyBreakpoints();
-
-
 				this._runtime.sendRaw("@");
 				this._runtime.sendRaw("prolog:set_auto_binding(on).");
 				break;
@@ -138,7 +133,7 @@ export class PrologDebugSession extends LoggingDebugSession {
 		super.configurationDoneRequest(response, args);
 
 		// notify the launchRequest that configuration has finished
-		this._configurationDone.notif
+		this._configurationDone.notify();
 
 	}
 
@@ -149,7 +144,6 @@ export class PrologDebugSession extends LoggingDebugSession {
 
 		// wait until configuration has finished (and configurationDoneRequest has been called)
 		await this._configurationDone.wait(1000);
-
 
 		this.setupServer(args.program);
 
@@ -166,7 +160,7 @@ export class PrologDebugSession extends LoggingDebugSession {
 			this._runtime.clearBreakpoints(path);
 			return;
 		}
-				// set and verify breakpoint locations
+		// set and verify breakpoint locations
 		const actualBreakpoints = clientLines.map(l => {
 			let { verified, line, id } = this._runtime.setBreakPoint(path, this.convertClientLineToDebugger(l));
 			const bp = <DebugProtocol.Breakpoint> new Breakpoint(verified, this.convertDebuggerLineToClient(line), undefined, this.importedFiles.get(path));
@@ -187,10 +181,6 @@ export class PrologDebugSession extends LoggingDebugSession {
 				});
 
 		}
-		console.log("*----");
-		console.log(actualBreakpoints);
-		console.log(this._runtime.breakpoints);
-		console.log("-----*");
 
 		// send back the actual breakpoint positions
 		response.body = {
@@ -200,8 +190,7 @@ export class PrologDebugSession extends LoggingDebugSession {
 	}
 
 	protected threadsRequest(response: DebugProtocol.ThreadsResponse): void {
-
-		// runtime supports now threads so just return a default thread.
+		// prolog runtime only has one thread, always return dummy thread
 		response.body = {
 			threads: [
 				new Thread(PrologDebugSession.THREAD_ID, "thread 1")
@@ -212,20 +201,8 @@ export class PrologDebugSession extends LoggingDebugSession {
 
 	protected stackTraceRequest(response: DebugProtocol.StackTraceResponse, args: DebugProtocol.StackTraceArguments): void {
 
-		//const startFrame = typeof args.startFrame === 'number' ? args.startFrame : 0;
-		//const maxLevels = typeof args.levels === 'number' ? args.levels : 1000;
-		//const endFrame = startFrame + maxLevels;
-
-		//const stk = this._runtime.stack(startFrame, endFrame);
-
-		/* response.body = {
-			stackFrames: stk.frames.map(f => new StackFrame(f.index, f.name, this.createSource(f.file), this.convertDebuggerLineToClient(f.line))),
-			totalFrames: stk.count
-		}; */
-		//let temp = new StackFrame(50, "testCall", undefined, 25, undefined);
-
 		response.body = {
-			stackFrames: this.callStack.map( s => new StackFrame(s[1], s[0], this.createSource(this._runtime._sourceFile), s[2], undefined)),
+			stackFrames: this.callStack.map( s => new StackFrame(s[1], s[0], (s[3] ? this.createSource(s[3]) : undefined), s[2], undefined)),
 			totalFrames: this.callStack.length
 		}
 		response.body.stackFrames = response.body.stackFrames.reverse();
@@ -295,7 +272,7 @@ export class PrologDebugSession extends LoggingDebugSession {
 		this.sendResponse(response);
 	}
 	protected nextRequest(response: DebugProtocol.NextResponse, args: DebugProtocol.NextArguments): void {
-		this._runtime.sendUserInput("s");
+		this._runtime.skip();
 		this.sendResponse(response);
 	}
 	protected stepInRequest(response: DebugProtocol.StepInResponse, args: DebugProtocol.StepInArguments): void {
@@ -313,43 +290,9 @@ export class PrologDebugSession extends LoggingDebugSession {
 		this.sendResponse(response);
 	}
 
-	/* protected evaluateRequest(response: DebugProtocol.EvaluateResponse, args: DebugProtocol.EvaluateArguments): void {
-
-		let reply: string | undefined = undefined;
-
-		if (args.context === 'repl') {
-			// 'evaluate' supports to create and delete breakpoints from the 'repl':
-			const matches = /new +([0-9]+)/.exec(args.expression);
-			if (matches && matches.length === 2) {
-				const mbp = this._runtime.setBreakPoint(this._runtime.sourceFile, this.convertClientLineToDebugger(parseInt(matches[1])));
-				const bp = <DebugProtocol.Breakpoint> new Breakpoint(mbp.verified, this.convertDebuggerLineToClient(mbp.line), undefined, this.createSource(this._runtime.sourceFile));
-				bp.id= mbp.id;
-				this.sendEvent(new BreakpointEvent('new', bp));
-				reply = `breakpoint created`;
-			} else {
-				const matches = /del +([0-9]+)/.exec(args.expression);
-				if (matches && matches.length === 2) {
-					const mbp = this._runtime.clearBreakPoint(this._runtime.sourceFile, this.convertClientLineToDebugger(parseInt(matches[1])));
-					if (mbp) {
-						const bp = <DebugProtocol.Breakpoint> new Breakpoint(false);
-						bp.id= mbp.id;
-						this.sendEvent(new BreakpointEvent('removed', bp));
-						reply = `breakpoint deleted`;
-					}
-				}
-			}
-		}
-
-		response.body = {
-			result: reply ? reply : `evaluate(context: '${args.context}', '${args.expression}')`,
-			variablesReference: 0
-		};
-		this.sendResponse(response);
-	} */
 
 	public setupServer(program?: string) {
 		// Start adapter server to send/receive data
-		//this.adapterServer = new AdapterServer(this);
 		this._runtime.startServer(true, program);
 		this._runtime.on("newInstructions", () => {
 			this.executeInstructions();
@@ -371,13 +314,13 @@ export class PrologDebugSession extends LoggingDebugSession {
 		this._runtime.on('stopOnStep', () => {
 			this.sendEvent(new StoppedEvent('step', PrologDebugSession.THREAD_ID));
 		});
+		this._runtime.on('stopOnPause', () => {
+			this.sendEvent(new StoppedEvent('pause', PrologDebugSession.THREAD_ID));
+		});
 
 		console.log("started the runtime");
 
 		this.variables = new Map();
-
-
-
 
 	}
 
@@ -401,8 +344,6 @@ export class PrologDebugSession extends LoggingDebugSession {
 		e.event = "runtimeOutput";
 		this.sendEvent(e);
 
-
-		//console.log(e);
 
 	}
 

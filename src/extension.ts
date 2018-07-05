@@ -7,7 +7,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { WorkspaceFolder, DebugConfiguration, ProviderResult, CancellationToken } from 'vscode';
-import { PrologDebugSession } from './mockDebug';
 import * as Net from 'net';
 import { CallStackInstruction, StackParseState } from './adapterServer';
 
@@ -16,7 +15,6 @@ import { CallStackInstruction, StackParseState } from './adapterServer';
  * debug adapter should run inside the extension host.
  * Please note: the test suite does no longer work in this mode.
  */
-const EMBED_DEBUG_ADAPTER = false;
 var htmlLoaded = false;
 var switchEditorCount = 0;
 
@@ -56,17 +54,7 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(vscode.debug.registerDebugConfigurationProvider('mock', provider));
 	context.subscriptions.push(provider);
 
-    context.subscriptions.push(vscode.commands.registerCommand('catCoding.start', () => {
-        PrologDebugPanel.createOrShow(context.extensionPath);
-    }));
 
- 	context.subscriptions.push(vscode.commands.registerCommand('catCoding.doRefactor', () => {
-        if (PrologDebugPanel.currentPanel) {
-            PrologDebugPanel.currentPanel.doRefactor();
-        }
-	}));
-
-    vscode.commands.executeCommand("catCoding.start");
 
     vscode.window.onDidChangeActiveTextEditor( () => {
         if (switchEditorCount++ < 1) {
@@ -79,13 +67,7 @@ export function activate(context: vscode.ExtensionContext) {
 
     })
 
-    vscode.debug.onDidChangeBreakpoints( (args) => {
-        if (args.removed.length > 0 && vscode.debug.activeDebugSession) {
-            //vscode.debug.activeDebugSession.customRequest("remove_breakpoint", {bps: args.removed});
-        }
-
-
-    })
+    PrologDebugPanel.createOrShow(context.extensionPath);
 
 }
 
@@ -119,27 +101,6 @@ class MockConfigurationProvider implements vscode.DebugConfigurationProvider {
 			return vscode.window.showInformationMessage("Cannot find a program to debug").then(_ => {
 				return undefined;	// abort launch
 			});
-		}
-
-		if (EMBED_DEBUG_ADAPTER) {
-			// start port listener on launch of first debug session
-			if (!this._server) {
-
-                //this._server = new PrologDebugSession();
-
-
-				// start listening on a random port
-				this._server = Net.createServer(socket => {
-					const session = new PrologDebugSession();
-					session.setRunAsServer(true);
-                    session.start(<NodeJS.ReadableStream>socket, socket);
-
-				}).listen(4711);
-            }
-
-
-			// make VS Code connect to debug server instead of launching debug adapter
-			config.debugServer = this._server.address().port;
 		}
 
 		return config;
@@ -181,7 +142,6 @@ class PrologDebugPanel {
 
 	}
 
-    // TODO: clean up code and remove extra stuff
     private constructor(extensionPath: string, column: vscode.ViewColumn) {
         this._extensionPath = extensionPath;
 
@@ -222,12 +182,6 @@ class PrologDebugPanel {
                         //console.log("sent from extension: " + message.text);
                     }
                     break;
-                case 'raw_input':
-                    if (debugSession) {
-                        debugSession.customRequest("raw_input", {msg: message.text});
-                        //console.log("sent from extension: " + message.text);
-                    }
-                    break;
                 case 'exportLog':
                     if (debugSession) {
                         debugSession.customRequest("export_output", {msg: message.raw});
@@ -250,8 +204,9 @@ class PrologDebugPanel {
                                 debugSession.customRequest("importFile", file[0]);
                             }
                             vscode.window.showTextDocument(file[0], {
-                                preview: true,
-                                preserveFocus: false
+                                preview: false,
+                                preserveFocus: false,
+
                             }).then( editor => {
                                 // editor is opened
 
@@ -333,8 +288,6 @@ class PrologDebugPanel {
 
         // Use a nonce to whitelist which scripts can be run
         const nonce = getNonce();
-        // TODO: resize console to fix formattting
-        // TODO: make console accept input directly
         return `<!DOCTYPE html>
             <html lang="en">
             <head>
@@ -347,7 +300,6 @@ class PrologDebugPanel {
             <body>
                 <textarea id="debug-text" rows="4" cols="50"></textarea><br>
                 <input id="debug-input" type="text" placeholder="Enter command..">
-                <input id="raw-input" type="text" placeholder="Enter RAW command..">
                 <div id="button-menu">
                     <button id="import-btn">Import File</button>
                     <button id="export-btn">Export log</button>

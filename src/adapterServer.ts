@@ -22,8 +22,8 @@ export class AdapterServer extends EventEmitter {
 	public instructionQueue;
 	public inputStream;
 
-	protected source_file: Source;
-	public _sourceFile: string;
+	protected source_file: Source[];
+	public _sourceFile: string[];
 
 	public get sourceFile() {
 		return this._sourceFile;
@@ -53,12 +53,11 @@ export class AdapterServer extends EventEmitter {
 	}
 
 	startServer(stopOnEntry: boolean, file?: string) {
-		// TODO: implemement stopOnEntry decision
 		var self = this;
 
 		if (file) {
-			this._sourceFile = file;
-			this._sourceLines = readFileSync(this._sourceFile).toString().split('\n');
+			this._sourceFile = [file];
+			this._sourceLines = readFileSync(this._sourceFile[0]).toString().split('\n');
 		}
 
 		this.process = spawn("C:\\repcon4\\runtime\\bin\\repcon.exe",
@@ -133,6 +132,11 @@ export class AdapterServer extends EventEmitter {
 
 		this.sendRaw("");
 		this.sendEvent(event);
+	}
+
+	public skip() {
+		this.sendRaw("s");
+
 	}
 
 	sendUserInput(input) {
@@ -352,10 +356,10 @@ export class AdapterServer extends EventEmitter {
 	}
 
 	public setFile( file: Source ) {
-		this.source_file = file;
-		this.source_file.name = this.source_file.path.substring(1, this.source_file.path.length);
-		this._sourceFile = file.name;
-		this._sourceLines = readFileSync(this.source_file.name).toString().split('\n');
+		let len = this.source_file.push(file);
+		this.source_file[len-1].name = this.source_file[len-1].path.substring(1, this.source_file[len-1].path.length);
+		this._sourceFile.push(file.name);
+		this._sourceLines = readFileSync(this.source_file[this.source_file.length-1].name).toString().split('\n');
 		return true;
 	}
 
@@ -363,7 +367,7 @@ export class AdapterServer extends EventEmitter {
 	 * Fire events if line has a breakpoint or the word 'exception' is found.
 	 * Returns true is execution needs to stop.
 	 */
-	public fireEventsForLine(ln: number, stepEvent?: string): boolean {
+	public fireEventsForLine(ln: number, file: string): boolean {
 
 		//const line = this._sourceLines[ln].trim();
 		this._currentLine = ln;
@@ -371,6 +375,7 @@ export class AdapterServer extends EventEmitter {
 		// is there a breakpoint?
 		let temp = this.source_file.path;
 		temp = temp.substring(1, temp.length);
+		temp = file;
 		const breakpoints = this.breakpoints.get(temp);
 		if (breakpoints) {
 			const bps = breakpoints.filter(bp => bp.line === ln);
@@ -483,6 +488,9 @@ class InfoInstruction extends DebugInstruction {
 	static gatherBreakpointInfo(): any {
 		try {
 			let temp = InfoInstruction.previous;
+			if (temp.substring(0, 6) != "in sco") {
+				return false;
+			}
 			temp = temp.substring(27, temp.length);
 			let marker = temp.indexOf(" ");
 
@@ -570,7 +578,7 @@ export class CallStackInstruction extends DebugInstruction {
 
 		}
 
-		// TODO: add support for EXCEPTION and REDO action
+		// TODO: add support for EXCEPTION and REDO action, only CALL, FAIL, EXIT implemneted
 		switch (blocks[2].charAt(0)) {
 			case "C":
 				this.action = StackAction.Call;
@@ -610,7 +618,7 @@ export class CallStackInstruction extends DebugInstruction {
 		switch (this.action) {
 			case StackAction.Call:
 				if (this.level == session.callStack.length + 1) {
-					session.callStack.push([this.fName, this.level, session._runtime._currentLine]);
+					session.callStack.push([this.fName, this.level, undefined, undefined]);
 					// Ask for variables stack
 					session._runtime.askForVars();
 				} else if (this.level < session.callStack.length + 1) {
@@ -638,16 +646,25 @@ export class CallStackInstruction extends DebugInstruction {
 		}
 		//session.sendEvent(new StoppedEvent('reply', PrologDebugSession.THREAD_ID));
 
+		let response = InfoInstruction.gatherBreakpointInfo();
 		if (this.breakpointEvt) {
-			let response = InfoInstruction.gatherBreakpointInfo();
 			if (response != false) {
 				session.callStack[session.callStack.length-1][2] = response.line;
-				session._runtime.fireEventsForLine(response.line, undefined);
+				session.callStack[session.callStack.length-1][3] = response.file;
+				session._runtime.fireEventsForLine(response.line, response.file);
 			};
+		} else {
+			if (response != false) {
+				session.callStack[session.callStack.length-1][2] = response.line;
+				session._runtime.sendEvent('stopOnStep');
+			} else {
+				session._runtime.sendEvent('stopOnPause');
+			}
+
 		}
 
 		if (!this.breakpointEvt) {
-			session._runtime.sendEvent('stopOnStep');
+
 		}
 
 		return 1;

@@ -5,7 +5,6 @@
     const debugConsole = document.getElementById("debug-text");
     const debugInput = document.getElementById("debug-input");
 
-    const rawInput = document.getElementById("raw-input");
 
     var lineBreakFlag = false;
 
@@ -74,17 +73,6 @@
           vscode.postMessage({ command: "user_input", text: debugInput.value})
           debugInput.value = "";
           console.log("pressed");
-          return true;
-        }
-      }
-
-    rawInput.onkeypress = function(e){
-        if (!e) e = window.event;
-        var keyCode = e.keyCode || e.which;
-        if (keyCode == '13'){
-          //writeToConsole("you pressed enter");
-          vscode.postMessage({ command: "raw_input", text: rawInput.value})
-          rawInput.value = "";
           return true;
         }
       }
