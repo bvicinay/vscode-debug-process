@@ -7,6 +7,9 @@ body {
 body.vscode-dark * {
 	color: white;
 }
+body.vscode-light * :not(#button-menu) {
+	border:1px gray solid !important;
+}
 
 body *{
 	font-family: "Consolas", serif;
