@@ -2,7 +2,7 @@
  * Copyright (C) Microsoft Corporation. All rights reserved.
  *--------------------------------------------------------*/
 
- import { PrologDebugSession } from './mockDebug';
+ import { PrologDebugSession } from './PrologDebug';
 
  PrologDebugSession.run(PrologDebugSession);
 

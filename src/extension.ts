@@ -38,7 +38,7 @@ export function activate(context: vscode.ExtensionContext) {
         } else if (type == "loadedSource") {
             //msg = "***Imported file " + customEvent.body.source.origin;
         } else if (type == "infoMessage") {
-            vscode.window.showInformationMessage(`Exception reached ->  Line: ${customEvent.body.data.line} \n File: ${customEvent.body.data.file}`);
+            vscode.window.showInformationMessage(customEvent.body.data.msg);
         }
         storedOutput += msg;
         if (PrologDebugPanel.currentPanel) {
@@ -67,7 +67,10 @@ export function activate(context: vscode.ExtensionContext) {
 
     })
 
-    PrologDebugPanel.createOrShow(context.extensionPath);
+
+    vscode.debug.onDidStartDebugSession( () => {
+        PrologDebugPanel.createOrShow(context.extensionPath);
+    })
 
 }
 

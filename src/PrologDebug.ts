@@ -4,7 +4,7 @@
 import {
 	Logger, logger,
 	LoggingDebugSession,
-	InitializedEvent, TerminatedEvent, StoppedEvent, ContinuedEvent, BreakpointEvent, OutputEvent,
+	InitializedEvent, StoppedEvent, ContinuedEvent, OutputEvent,
 	Thread, StackFrame, Scope, Source, Handles, Breakpoint, LoadedSourceEvent
 } from 'vscode-debugadapter';
 
@@ -248,7 +248,7 @@ export class PrologDebugSession extends LoggingDebugSession {
 				});
 			} else {
 				variables.push({
-					name: "?",
+					name: "UNKNOWN",
 					type: "string",
 					value: "not tracked in this call",
 					variablesReference: 0
@@ -290,6 +290,13 @@ export class PrologDebugSession extends LoggingDebugSession {
 		this.sendResponse(response);
 	}
 
+	public sendException(text: string) {
+		let e = new OutputEvent('infoMessage', 'breakpoint', text);
+		e.event = "infoMessage";
+		this.sendEvent(e);
+	}
+
+
 
 	public setupServer(program?: string) {
 		// Start adapter server to send/receive data
@@ -299,9 +306,6 @@ export class PrologDebugSession extends LoggingDebugSession {
 		})
 		this._runtime.on('stopOnBreakpoint', (args) => {
 			this.sendEvent(new StoppedEvent('breakpoint', PrologDebugSession.THREAD_ID, "Paused on a breakpoint"));
-			let e = new OutputEvent('infoMessage', 'breakpoint', args);
-			e.event = "infoMessage";
-			this.sendEvent(e);
 		});
 
 		this._runtime.on('continue', () => {

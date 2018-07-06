@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import { PrologDebugSession } from './mockDebug';
+import { PrologDebugSession } from './PrologDebug';
 import { StoppedEvent, Source } from 'vscode-debugadapter/lib/debugSession';
 import { readFileSync } from 'fs';
 
@@ -74,7 +74,7 @@ export class AdapterServer extends EventEmitter {
 
 		this.process.stderr.on('data', (data) => {
 			let text = `${data}`;
-			console.log("|" + text + "|");
+			//console.log("|" + text + "|");
 			this.session.sendToClient(text, true);
 			this.tunnelLog += text;
 
@@ -260,8 +260,18 @@ export class AdapterServer extends EventEmitter {
 			let extra = onHold.slice(0, i);
 			let relevant = onHold.slice(i, onHold.length);
 			console.log(extra, relevant);
-			let event1: DebugInstruction = new InfoInstruction(extra);
-			let event2: DebugInstruction = new CallStackInstruction(relevant);
+			let event1: DebugInstruction;
+			let event2: DebugInstruction;
+			try {
+				event1 = new InfoInstruction(extra);
+				event2 = new CallStackInstruction(relevant);
+			} catch (err) {
+				console.log(err);
+				this.session.sendException(`Parse error, an instruction was omitted: \n ${extra}\n${relevant}`);
+				return false;
+
+			}
+
 
 
 			if (extra.length > 0) {
@@ -278,7 +288,7 @@ export class AdapterServer extends EventEmitter {
 		let bps = this.breakpoints.get(path);
 		if (!bps) {
 			bps = new Array<BasicBreakpoint>();
-			this.breakpoints.set(path, bps);
+			this.breakpoints.set(path.toLowerCase(), bps);
 
 		}
 
@@ -356,10 +366,10 @@ export class AdapterServer extends EventEmitter {
 	}
 
 	public setFile( file: Source ) {
-		let len = this.source_file.push(file);
-		this.source_file[len-1].name = this.source_file[len-1].path.substring(1, this.source_file[len-1].path.length);
-		this._sourceFile.push(file.name);
-		this._sourceLines = readFileSync(this.source_file[this.source_file.length-1].name).toString().split('\n');
+		//let len = this.source_file.push(file);
+		//this.source_file[len-1].name = this.source_file[len-1].path.substring(1, this.source_file[len-1].path.length);
+		let len = this._sourceFile.push(file.name.substring(1, file.name.length));
+		this._sourceLines = readFileSync(this._sourceFile[len-1]).toString().split('\n');
 		return true;
 	}
 
@@ -373,9 +383,9 @@ export class AdapterServer extends EventEmitter {
 		this._currentLine = ln;
 
 		// is there a breakpoint?
-		let temp = this.source_file.path;
-		temp = temp.substring(1, temp.length);
-		temp = file;
+		//let temp = this.source_file.path;
+		//temp = temp.substring(1, temp.length);
+		let temp = file;
 		const breakpoints = this.breakpoints.get(temp);
 		if (breakpoints) {
 			const bps = breakpoints.filter(bp => bp.line === ln);
@@ -458,8 +468,6 @@ class InfoInstruction extends DebugInstruction {
 
 
 		let temp = this.raw.trim();
-		let print = true;
-
 		if (temp.includes("No local var")) {
 			session.variables.set(session.callStack.length, new Map());
 			session.showOnConsole = true;
@@ -569,15 +577,6 @@ export class CallStackInstruction extends DebugInstruction {
 		}
 		this.level = _level;
 
-		try {
-			blocks[2].charAt(0);
-		} catch (err) {
-			console.log(this);
-			console.log(lines);
-			console.log(err);
-
-		}
-
 		// TODO: add support for EXCEPTION and REDO action, only CALL, FAIL, EXIT implemneted
 		switch (blocks[2].charAt(0)) {
 			case "C":
@@ -656,6 +655,7 @@ export class CallStackInstruction extends DebugInstruction {
 		} else {
 			if (response != false) {
 				session.callStack[session.callStack.length-1][2] = response.line;
+				session.callStack[session.callStack.length-1][3] = response.file;
 				session._runtime.sendEvent('stopOnStep');
 			} else {
 				session._runtime.sendEvent('stopOnPause');

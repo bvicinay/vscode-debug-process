@@ -1,32 +1,29 @@
 {
-	"name": "mock-debug",
-	"displayName": "Mock Debug",
+	"name": "prolog-debug",
+	"displayName": "Prolog Debugger",
 	"version": "0.27.0",
-	"publisher": "andreweinand",
-	"description": "Starter extension for developing debug adapters for VS Code.",
+	"publisher": "semantic_systems",
+	"description": "Extension for debugging prolog programs using an attached runtime",
 	"author": {
-		"name": "Microsoft Corporation",
-		"email": "aweinand@microsoft.com"
+		"name": "Borja Vicinay",
+		"email": "bvicinay@gmail.com"
 	},
-	"license": "MIT",
 	"keywords": [
-		"multi-root ready"
+		"prolog",
+		"debugger",
+		"runtime"
 	],
 	"engines": {
 		"vscode": "^1.23.0",
 		"node": "^7.9.0"
 	},
-	"icon": "images/mock-debug-icon.png",
 	"categories": [
 		"Debuggers"
 	],
 	"private": true,
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/Microsoft/vscode-mock-debug.git"
-	},
-	"bugs": {
-		"url": "https://github.com/Microsoft/vscode-mock-debug/issues"
+		"url": "https://github.com/bvicinay/vscode-debug-process"
 	},
 	"scripts": {
 		"prepublish": "tsc -p ./src",
@@ -57,29 +54,9 @@
 	"main": "./out/extension",
 	"activationEvents": [
 		"onDebug",
-		"onCommand:extension.mock-debug.getProgramName",
-		"onCommand:catCoding.start",
-		"onCommand:catCoding.doRefactor"
+		"onCommand:extension.mock-debug.getProgramName"
 	],
 	"contributes": {
-		"commands": [
-			{
-				"command": "catCoding.start",
-				"title": "Start cat coding session",
-				"category": "Cat Coding"
-			},
-			{
-				"command": "catCoding.doRefactor",
-				"title": "Do some refactoring",
-				"category": "Cat Coding"
-			}
-		],
-		"keybindings": [
-			{
-				"command": "catCoding.doRefactor",
-				"key": "Ctrl+R"
-			}
-		],
 		"breakpoints": [
 			{
 				"language": "markdown"
