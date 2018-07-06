@@ -9,10 +9,6 @@ var fs = require('fs');
 
 const {spawn} = require('child_process');
 const inputStream = require('stream');
-//const {onExit} = require('@rauschma/stringio');
-
-//const S = 14;
-
 
 export class AdapterServer extends EventEmitter {
 
@@ -228,15 +224,8 @@ export class AdapterServer extends EventEmitter {
 				this.instructionQueue.push(event);
 				return true;
 			}
-			//console.log(onHold);
 			if (CallStackInstruction.STATE == StackParseState.Parse) {
-				//let line = onHold[i].trim();
-/* 				while (line.charAt(0) == "%") {
-					line = onHold[++i].trim();
-					while (line.charAt(0) != "%") {
-						line = onHold[i++].trim();
-					}
-				} */
+
 
 				let line = onHold[i].substring(0, 2).replace(/([?#])+/g, " ");
 				while (line != "  ") {
@@ -382,9 +371,6 @@ export class AdapterServer extends EventEmitter {
 		//const line = this._sourceLines[ln].trim();
 		this._currentLine = ln;
 
-		// is there a breakpoint?
-		//let temp = this.source_file.path;
-		//temp = temp.substring(1, temp.length);
 		let temp = file;
 		const breakpoints = this.breakpoints.get(temp);
 		if (breakpoints) {
@@ -457,9 +443,6 @@ class InfoInstruction extends DebugInstruction {
 	}
 
 	execute(session: PrologDebugSession) {
-/* 		if (this.raw.substring(this.raw.length-7, this.raw.length) == "(trace)") {
-			CallStackInstruction.fixCallStack(session);
-		} */
 
 		if (CallStackInstruction.STATE == StackParseState.Fix) {
 			//return -1;
@@ -608,10 +591,6 @@ export class CallStackInstruction extends DebugInstruction {
 			session.hideAfterNext = false;
 		}
 
-
-		//console.log("instruction level: " + this.level);
-		//console.log(this);
-		//console.log(session.callStack);
 
 		// Call stack instruction
 		switch (this.action) {

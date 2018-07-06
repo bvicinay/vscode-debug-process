@@ -38,7 +38,7 @@ export function activate(context: vscode.ExtensionContext) {
         } else if (type == "loadedSource") {
             //msg = "***Imported file " + customEvent.body.source.origin;
         } else if (type == "infoMessage") {
-            vscode.window.showInformationMessage(customEvent.body.data.msg);
+            vscode.window.showWarningMessage(customEvent.body.data.msg);
         }
         storedOutput += msg;
         if (PrologDebugPanel.currentPanel) {
